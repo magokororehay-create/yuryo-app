@@ -79,6 +79,20 @@
   .sum{display:flex;justify-content:space-between;padding:6px 0;font-size:15px;border-bottom:1px dashed var(--line);}
   .sum b{font-variant-numeric:tabular-nums;}
   .warn{font-size:13px;color:#7a5c00;background:var(--warn);border-radius:6px;padding:6px 8px;margin-top:4px;}
+  /* 「？」の説明ボタン：指で押せる大きさを確保する（休暇管理アプリと同じ） */
+  .help{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;flex:none;
+        margin-left:6px;border:1px solid #c7c7cc;border-radius:50%;background:#fff;color:var(--pri);
+        font-size:13px;font-weight:700;line-height:1;padding:0;vertical-align:middle;cursor:pointer;}
+  .help:active{background:var(--pri-weak);}
+  .sect{display:flex;align-items:center;}
+  .cell{position:relative;}
+  .cell>button:not(.help){width:100%;height:100%;padding-right:32px;}
+  .cell>.help{position:absolute;top:50%;right:6px;transform:translateY(-50%);margin:0;}
+  .usage{text-align:right;margin:-4px 0 4px;}
+  .usage button{background:none;color:var(--pri);font-size:13px;padding:4px 0;}
+  #helpOvl{z-index:15;}
+  #helpOvl dt{font-size:12px;font-weight:700;color:var(--pri);margin-top:14px;}
+  #helpOvl dd{margin:4px 0 0;font-size:15px;line-height:1.7;white-space:pre-line;}
   .names button{display:block;width:100%;margin-top:8px;background:var(--pri-weak);color:var(--pri);font-size:17px;}
 </style>
 </head>
@@ -88,13 +102,13 @@
   <div id="msg"></div>
 
   <div id="vLogin" class="card hidden">
-    <div class="muted">施設のPINを入れてください</div>
+    <div class="muted">施設のPINを入れてください<button type="button" class="help" data-help="pin" aria-label="説明">?</button></div>
     <input id="pin" type="password" inputmode="numeric" autocomplete="off" style="margin-top:8px;">
     <button id="btnPin" class="full">次へ</button>
   </div>
 
   <div id="vNames" class="card hidden">
-    <div class="muted">自分の名前を選んでください</div>
+    <div class="muted">自分の名前を選んでください<button type="button" class="help" data-help="name" aria-label="説明">?</button></div>
     <div id="names" class="names"></div>
   </div>
 
@@ -102,7 +116,7 @@
     <div class="who"><span id="me"></span><a href="#" id="logout">ログアウト</a></div>
     <div class="bar" id="dayBar">
       <button id="prev" class="sub">◀</button>
-      <div class="date" id="dateLabel"></div>
+      <div class="date"><span id="dateLabel"></span><button type="button" class="help" data-help="date" aria-label="説明">?</button></div>
       <button id="next" class="sub">▶</button>
     </div>
     <div id="closed" class="banner hidden">この月は締め済みのため、記録できません</div>
@@ -114,6 +128,7 @@
     </div>
     <div id="pRes" class="card"></div>
     <div id="pItem" class="card hidden">
+      <div class="usage"><button type="button" data-help="item">？ この画面の使い方</button></div>
       <select id="bulkItem"></select>
       <div id="bulkList"></div>
       <button id="bulkGo" class="full">まとめて記録</button>
@@ -124,6 +139,11 @@
 </div>
 
 <div id="ovl" class="ovl hidden"><div class="sheet" id="sheet"></div></div>
+<div id="helpOvl" class="ovl hidden"><div class="sheet">
+  <h2 id="helpTitle"></h2>
+  <dl id="helpBody"></dl>
+  <button id="helpClose" class="sub full">閉じる</button>
+</div></div>
 
 <script>
 (function () {
@@ -204,6 +224,135 @@
     return post(Object.assign({ action: action, token: load(TOKEN_KEY), requestId: newRequestId() }, extra || {}));
   }
   function busy(b, on) { if (b) b.disabled = on; }
+
+  // ── 「？」の説明（休暇管理アプリと同じ形：押すと下から説明が出る）──
+  // 慣れていないスタッフが迷わないよう、ボタンごとに「いつ押すか」「押すとどうなるか」を書く。
+  // 運用が変わったらここを直して、公開リポジトリへも写す。
+  var HELP = {
+    pin: { title: '施設のPIN', body: [
+      ['入れるもの', '施設で決めた数字（全員共通）です。わからないときはリーダーか管理者に聞いてください。'],
+      ['間違えたとき', '何度も続けて間違えると、しばらく入力できなくなります。'] ] },
+    name: { title: '名前を選ぶ', body: [
+      ['選ぶ名前', '必ず自分の名前を選んでください。記録には選んだ名前が残ります。'],
+      ['名前が無いとき', '管理者に伝えてください（スタッフの一覧に足してもらいます）。'],
+      ['ログインの長さ', '一度入ると12時間はそのまま使えます。'] ] },
+    date: { title: '日付', body: [
+      ['ふだん', '今日の日付のまま記録します。'],
+      ['付け忘れたとき', '◀ で日付を戻すと、その日の分として記録できます（45日前まで）。'],
+      ['できないこと', '明日以降の日付には記録できません。締めた月（前の月の請求が終わった月）にも記録できません。'] ] },
+    res: { title: '「人から」の使い方', body: [
+      ['使う場面', '1人の入居者に、いくつかのことをまとめて付けたいとき。'],
+      ['手順', '① 入居者の名前を押す\n② 出てきたボタンから、したことを押す\n③ 上に「記録しました」と出れば完了'],
+      ['名前の横の印', '🧺洗濯・🛁入浴 … 今日が予定日\n✓ が付いたら記録済み'] ] },
+    item: { title: '「項目から」の使い方', body: [
+      ['使う場面', '洗濯やソープ代など、1つのことを何人分もまとめて付けたいとき。'],
+      ['手順', '① 上の選択で項目を選ぶ\n② したことのある人にチェックを入れる\n③ [まとめて記録] を押す'],
+      ['並び方', '今日が予定日の人が上、予定外の人が下に並びます。記録済みの人はチェックできません。'] ] },
+    check: { title: '「確認」の使い方（日勤リーダー）', body: [
+      ['使う場面', '夕方、その日の記録に漏れがないかを確かめるとき。'],
+      ['手順', '① 「予定があるのに記録なし」を上から見る\n② したのに付け忘れ → [記録する]\n③ しなかった → 理由を選んで [今日は無し]\n④ 最後に [確認完了]'],
+      ['わからないこと', '欠食・備品・排泄介助・掃除には予定が無いので、漏れは機械では見つけられません。担当者に声をかけて確かめてください。'] ] },
+    admin: { title: '「管理」の使い方', body: [
+      ['中旬', 'おむつの袋数を入居者ごとに入れて [保存] → [発注書を作る]'],
+      ['月のはじめ', '[集計する] で前の月の請求の表を作り、注意を見て直す'],
+      ['集計が合ったら', '[締める] で前の月を確定する'],
+      ['設定を変えるとき', '入居者・単価・スタッフ・調整は、スプレッドシートを直接直します。'] ] },
+    '洗濯': { title: '洗濯', body: [
+      ['押すとき', 'その人の洗濯物を洗濯機で洗ったとき。1回洗って1回押します。'],
+      ['種類', '「洗剤あり」「洗濯のみ」は入居者ごとに決まっているので、選ぶ必要はありません。'],
+      ['1日に2回洗ったとき', 'もう一度押します。「すでに記録があります」と出るので [OK] を押してください。'],
+      ['乾燥機', '乾燥機を使ったときは、下の「乾燥機」で別に分数を記録します。'] ] },
+    'ソープ代': { title: 'ソープ代（入浴）', body: [
+      ['押すとき', 'その人が入浴したとき。1回の入浴で1回押します。'],
+      ['押さないとき', '清拭だけ・入浴しなかった日は押しません。予定日なのに入らなかった日は、リーダーが「確認」で「今日は無し」にします。'] ] },
+    '排泄介助': { title: '排泄介助', body: [
+      ['押すとき', '料金をいただく自費サービスとして排泄介助をしたとき。1回で1回押します。'],
+      ['迷ったら', '対象の人かどうか分からないときは、押す前にリーダーに確認してください。'] ] },
+    '掃除': { title: '掃除', body: [
+      ['押すとき', '料金をいただく自費サービスとして居室の掃除をしたとき。1回で1回押します。'],
+      ['迷ったら', '対象の人かどうか分からないときは、押す前にリーダーに確認してください。'] ] },
+    '自費入浴': { title: '入浴（自費）', body: [
+      ['押すとき', 'いつもの入浴とは別に、料金をいただく自費サービスとして入浴介助をしたとき。'],
+      ['ソープ代との違い', 'ふだんの入浴は「ソープ代」だけを押します。自費の入浴のときだけこちらを押します。'],
+      ['迷ったら', '押す前にリーダーに確認してください。'] ] },
+    '自費洗濯': { title: '洗濯（自費）', body: [
+      ['押すとき', 'いつもの洗濯とは別に、料金をいただく自費サービスとして洗濯をしたとき。'],
+      ['洗濯との違い', 'ふだんの洗濯は「洗濯」を押します。自費の洗濯のときだけこちらを押します。'],
+      ['迷ったら', '押す前にリーダーに確認してください。'] ] },
+    '乾燥機': { title: '乾燥機', body: [
+      ['記録するとき', 'その人の洗濯物に乾燥機を使ったとき。'],
+      ['手順', '使った時間（10分ごと）を選んで [記録] を押します。料金は10分ごとにかかります。'],
+      ['2回使ったとき', '1回ずつ記録しても、合計の分数で1回記録しても、どちらでもかまいません。'] ] },
+    '欠食': { title: '欠食（食べなかった食事）', body: [
+      ['押すとき', 'その食事を食べなかったとき。食べなかった食事（朝・昼・夕）を押します。食事代から引かれます。'],
+      ['押さなくてよいとき', '入院・外泊の期間中は自動で引かれるので押しません（リーダーが「確認」で入院・外泊を登録します）。'],
+      ['間違えたとき', '下の「この日の記録」から [取消] できます。'] ] },
+    '備品': { title: '備品', body: [
+      ['記録するとき', 'おしりふき・手袋など、施設の在庫からその人に渡したとき。'],
+      ['手順', '品目と個数を選んで [記録] を押します。'],
+      ['記録しないもの', '毎月まとめて発注するおむつ（管理者が「管理」で入れる分）は、ここでは記録しません。'] ] },
+    '取消': { title: 'この日の記録と取消', body: [
+      ['見られるもの', 'この人のこの日の記録と、記録した人の名前。'],
+      ['取消', '間違えて押したときは [取消] を押します。取り消せるのは自分が記録したものだけです（管理者は全員分）。'],
+      ['他の人の間違い', '記録した本人かリーダーに伝えてください。'] ] },
+    unconfirmed: { title: 'まだ確認されていない日', body: [
+      ['意味', '最近の日で、夕方の [確認完了] が押されていない日です。'],
+      ['すること', '日付を押すとその日に移るので、漏れを確かめて [確認完了] を押してください。'] ] },
+    missing: { title: '予定があるのに記録なし', body: [
+      ['出る人', '今日が洗濯・入浴の予定日なのに、まだ記録が無い人です（入院・外泊中の人は出ません）。'],
+      ['[記録する]', 'したのに付け忘れていたとき。あなたの名前で記録されます。'],
+      ['[今日は無し]', 'しなかったとき。理由（拒否・入院・外泊・予定変更・その他）を選んでから押します。料金はかかりません。'] ] },
+    away: { title: '入院・外泊中', body: [
+      ['出る人', '今日、入院・外泊している人です。期間中は食事代が自動で引かれ、洗濯・入浴の漏れにも出ません。'],
+      ['[戻った]', '戻った日と、戻って最初に食べた食事を選んで押します。'] ] },
+    stay: { title: '入院・外泊の登録', body: [
+      ['登録するとき', '入居者が入院した・外泊に出たとき。'],
+      ['選ぶもの', '① 入居者 ② 入院か外泊か ③ 出た日 ④ 最初に食べない食事\n（例：朝食後に出たら「昼」）'],
+      ['先の予定', '外泊の予定などは、先の日付でも登録できます（1か月先まで）。'] ] },
+    confirm: { title: '確認完了', body: [
+      ['押すとき', '夕方、漏れを確かめ終わったとき。1日1回、日勤リーダーが押します。'],
+      ['押すとどうなる', '誰がいつ確認したかが残ります。押さないと、次の日以降も「まだ確認されていない日」に出続けます。'],
+      ['漏れが残っているとき', '確かめられない分が残っていても押せます（確認の画面が出ます）。'] ] },
+    omutsu: { title: 'おむつ発注（管理者）', body: [
+      ['いつ', '毎月中旬。'],
+      ['手順', '① 入居者を選ぶ ② 品目ごとに袋数を入れる ③ [保存]\n全員分入れたら [発注書を作る]'],
+      ['直すとき', '何度でも入れ直せます。0 にするとその品目は無しになります。発注書は作り直すと最新の袋数になります。'] ] },
+    agg: { title: '月の集計（管理者）', body: [
+      ['いつ', '月のはじめに、前の月の分を集計します。'],
+      ['できるもの', '有料一覧表と同じ列の表（タブ「YYYY-MM」）と、内訳（タブ「YYYY-MM 内訳」）。'],
+      ['注意が出たら', '未確認の日・記録の無い人・入退去・入院外泊・家賃0円などを確かめ、必要ならスプレッドシートの「調整」で足し引きして、もう一度 [集計する]。'] ] },
+    close: { title: '締め（管理者）', body: [
+      ['いつ', '前の月の集計が合って、請求が済んだら。'],
+      ['押すとどうなる', 'その月の記録・おむつ・集計は変えられなくなります。記録は「記録 YYYY-MM」タブへ移ります。'],
+      ['やり直したいとき', 'スプレッドシートの「締め」タブの行を消すと解除できます（末廣さんに相談してください）。'] ] },
+  };
+
+  function openHelp(key) {
+    var h = HELP[key];
+    if (!h) return;
+    $('helpTitle').textContent = h.title;
+    var dl = $('helpBody'); clear(dl);
+    h.body.forEach(function (kv) { dl.appendChild(el('dt', { text: kv[0] })); dl.appendChild(el('dd', { text: kv[1] })); });
+    $('helpOvl').classList.remove('hidden');
+  }
+  function closeHelp() { $('helpOvl').classList.add('hidden'); }
+  $('helpClose').addEventListener('click', closeHelp);
+  $('helpOvl').addEventListener('click', function (e) { if (e.target === this) closeHelp(); });
+  // HTML に直接書いた「？」（ログイン・日付・項目から）は data-help で受ける
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-help]') : null;
+    if (b) { e.preventDefault(); openHelp(b.getAttribute('data-help')); }
+  });
+  // 描き直すたびに作る「？」。親（入居者の行など）のクリックに伝わらないよう止める。
+  function hb(key) {
+    return el('button', { type: 'button', cls: 'help', 'aria-label': '説明', text: '?',
+      onclick: function (e) { e.stopPropagation(); e.preventDefault(); openHelp(key); } });
+  }
+  function sectH(text, key) { return el('div', { cls: 'sect' }, [el('span', { text: text }), hb(key)]); }
+  function usage(key) {
+    return el('div', { cls: 'usage' }, [el('button', { type: 'button', text: '？ この画面の使い方',
+      onclick: function () { openHelp(key); } })]);
+  }
 
   // ── ログイン ──
   $('btnPin').addEventListener('click', async function () {
@@ -291,6 +440,7 @@
 
   function renderRes() {
     var box = $('pRes'); clear(box);
+    box.appendChild(usage('res'));
     if (!S.view.residents.length) box.appendChild(el('div', { cls: 'muted', text: 'この日に在籍している入居者がいません' }));
     S.view.residents.forEach(function (r) {
       box.appendChild(el('div', { cls: 'res', onclick: function () { openRes(r.id); } },
@@ -311,11 +461,11 @@
       var label = LABEL[item] + (item === '洗濯' && r.laundryType ? '（' + r.laundryType + '）' : '');
       var b = el('button', { text: label, onclick: function () { send([{ residentId: rid, item: item }], b); } });
       b.disabled = dis;
-      grid.appendChild(b);
+      grid.appendChild(el('div', { cls: 'cell' }, [b, hb(item)]));
     });
     sh.appendChild(grid);
 
-    sh.appendChild(el('div', { cls: 'sect', text: '乾燥機' }));
+    sh.appendChild(sectH('乾燥機', '乾燥機'));
     var mins = el('select');
     for (var m = 10; m <= 180; m += 10) mins.appendChild(el('option', { value: String(m), text: m + '分（' + m * 10 + '円）' }));
     var bd = el('button', { text: '記録', onclick: function () { send([{ residentId: rid, item: '乾燥機', qty: Number(mins.value) }], bd); } });
@@ -323,7 +473,7 @@
     sh.appendChild(el('div', { cls: 'row' }, [mins, bd]));
 
     if (r.mealProvided) {
-      sh.appendChild(el('div', { cls: 'sect', text: '欠食（食べなかった食事）' }));
+      sh.appendChild(sectH('欠食（食べなかった食事）', '欠食'));
       var meals = el('div', { cls: 'meals' });
       ['朝', '昼', '夕'].forEach(function (m) {
         var item = '欠食_' + m;
@@ -336,7 +486,7 @@
     }
 
     if (S.view.goods.length) {
-      sh.appendChild(el('div', { cls: 'sect', text: '備品（施設から渡したもの）' }));
+      sh.appendChild(sectH('備品（施設から渡したもの）', '備品'));
       var gs = el('select');
       S.view.goods.forEach(function (g) { gs.appendChild(el('option', { value: g.key, text: g.name })); });
       var q = el('input', { type: 'number', min: '1', max: '20', value: '1', inputmode: 'numeric' });
@@ -345,7 +495,7 @@
       sh.appendChild(el('div', { cls: 'row' }, [gs, q, bg]));
     }
 
-    sh.appendChild(el('div', { cls: 'sect', text: 'この日の記録' }));
+    sh.appendChild(sectH('この日の記録', '取消'));
     var recs = recsOf(rid);
     if (!recs.length) sh.appendChild(el('div', { cls: 'muted', text: 'まだありません' }));
     recs.forEach(function (x) {
@@ -467,15 +617,16 @@
   function renderCheck() {
     var v = S.view, c = v.check, box = $('pCheck');
     clear(box);
+    box.appendChild(usage('check'));
     if (c.unconfirmed.length) {
       var jumps = el('div', { cls: 'jumps' });
       c.unconfirmed.forEach(function (d) {
         jumps.appendChild(el('button', { cls: 'sub', text: md(d), onclick: function () { S.date = d; refresh(); } }));
       });
-      box.appendChild(el('div', { cls: 'banner' }, [el('div', { text: '⚠ まだ確認されていない日があります' }), jumps]));
+      box.appendChild(el('div', { cls: 'banner' }, [el('div', {}, [el('span', { text: '⚠ まだ確認されていない日があります' }), hb('unconfirmed')]), jumps]));
     }
 
-    box.appendChild(el('div', { cls: 'sect', text: '予定があるのに記録なし（' + c.missing.length + '件）' }));
+    box.appendChild(sectH('予定があるのに記録なし（' + c.missing.length + '件）', 'missing'));
     if (!c.missing.length) box.appendChild(el('div', { cls: 'muted', text: '漏れはありません' }));
     c.missing.forEach(function (m) {
       var reason = selectOf(REASONS);
@@ -490,7 +641,7 @@
       ]));
     });
 
-    box.appendChild(el('div', { cls: 'sect', text: '入院・外泊中（' + c.away.length + '名）' }));
+    box.appendChild(sectH('入院・外泊中（' + c.away.length + '名）', 'away'));
     if (!c.away.length) box.appendChild(el('div', { cls: 'muted', text: 'いません' }));
     c.away.forEach(function (a) {
       var kids = [el('div', { cls: 'mhead', text: a.room + ' ' + a.name + '　' + a.kind + ' ' + md(a.startDate) + a.startMeal + '〜' + (a.endDate ? md(a.endDate) : '') })];
@@ -513,7 +664,8 @@
       var add = el('button', { text: '登録', onclick: function () {
         act('stayStart', { date: S.date, residentId: who.value, kind: kind.value, startDate: sd.value, startMeal: sm.value }, '登録中…', '入院・外泊を登録しました');
       } });
-      box.appendChild(el('div', { cls: 'hint', text: '入院・外泊を登録する（開始日と、最初に食べない食事）。期間中は欠食が自動で数えられます' }));
+      box.appendChild(sectH('入院・外泊の登録', 'stay'));
+      box.appendChild(el('div', { cls: 'hint', text: '開始日と、最初に食べない食事を選びます。期間中は欠食が自動で数えられます' }));
       box.appendChild(el('div', { cls: 'row' }, [who, kind]));
       box.appendChild(el('div', { cls: 'row' }, [sd, sm, add]));
     }
@@ -529,6 +681,7 @@
     });
     box.appendChild(det);
 
+    box.appendChild(sectH('確認完了', 'confirm'));
     if (c.confirmedBy) {
       box.appendChild(el('div', { cls: 'okbox', text: '✓ 確認済み：' + c.confirmedBy.by + ' さん ' + String(c.confirmedBy.at).slice(11, 16) }));
     } else {
@@ -581,11 +734,12 @@
       el('button', { cls: 'sub', text: '▶', onclick: function () { S.ym = ymShift(S.ym, 1); S.agg = null; loadAdmin(); } }),
     ]);
     box.appendChild(bar);
+    box.appendChild(el('div', { cls: 'usage', style: 'margin-top:8px' }, [el('button', { type: 'button', text: '？ この画面の使い方', onclick: function () { openHelp('admin'); } })]));
     if (!a) return;
     if (a.closed) box.appendChild(el('div', { cls: 'banner', text: ymJa(a.ym) + 'は締め済みです（記録・おむつ・集計は変えられません）', style: 'margin-top:10px' }));
 
     // おむつ発注（中旬）
-    box.appendChild(el('div', { cls: 'sect', text: 'おむつ発注' }));
+    box.appendChild(sectH('おむつ発注', 'omutsu'));
     if (!S.admRes || !a.residents.some(function (r) { return r.id === S.admRes; })) S.admRes = a.residents.length ? a.residents[0].id : '';
     var who = el('select', { onchange: function () { S.admRes = this.value; renderAdmin(); } });
     a.residents.forEach(function (r) {
@@ -630,7 +784,7 @@
     if (a.tabs.order) box.appendChild(el('div', { cls: 'hint', text: '「発注書 ' + a.ym + '」タブがあります。作り直すと最新の袋数で上書きします。' }));
 
     // 集計
-    box.appendChild(el('div', { cls: 'sect', text: '月の集計' }));
+    box.appendChild(sectH('月の集計', 'agg'));
     if (!a.closed) {
       box.appendChild(el('button', { cls: 'full', text: '集計する', onclick: function () {
         adminAct('aggregate', {}, '集計しています…', function (d) { S.agg = { ym: S.ym, d: d }; return '「' + S.ym + '」と「' + S.ym + ' 内訳」タブを作りました'; });
@@ -650,7 +804,7 @@
     }
 
     // 締め
-    box.appendChild(el('div', { cls: 'sect', text: '締め' }));
+    box.appendChild(sectH('締め', 'close'));
     if (a.closed) {
       box.appendChild(el('div', { cls: 'hint', text: a.tabs.archive ? 'この月の記録は「記録 ' + a.ym + '」タブへ移してあります。' : '締め済みです。' }));
     } else if (a.today.slice(0, 7) <= a.ym) {
