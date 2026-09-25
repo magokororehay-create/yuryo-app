@@ -190,38 +190,82 @@
 
   // Google 側の結果配信が止まったり「ページが見つかりません」の HTML を返す障害がある
   // （2026-09-15 モニタリングアプリ、2026-09-26 このアプリで確認。GAS の処理自体は成功している）。
-  // JSON が取れないときだけ自動で再送する。書き込み系は同じ requestId で再送するので、サーバが二重に書かない。
-  var RETRY_MAX = 5, ATTEMPT_TIMEOUT_MS = 30000;
+  // 2026-09-26 の実測：まとめて記録20件は 1:35:41 にシートへ書かれていたのに、画面は 1:36 もまだ再送中だった
+  // ＝遅いのは処理ではなく結果の配信。そこで「待ってから送り直す」ではなく、
+  // 返事が HEDGE_MS 来なければ同じ依頼をもう1通「重ねて」送り、先に返ってきた方を使う。
+  // 書き込み系は同じ requestId なので、サーバは1回しか書かず、2通目以降には1回目の結果を返す。
+  // login / chooseName は重ねない（PIN の失敗回数が二重に数えられる・チケットは使い捨て）。
+  var SEND_MAX = 5;               // 1回の操作で送る最大の通数
+  var HEDGE_MS = 8000;            // ふだんの応答は4〜6秒。これを過ぎたら次の1通を重ねる
+  var ATTEMPT_TIMEOUT_MS = 20000; // 1通あたりの待ち上限
+  var NET_KEY = 'yuryo_net';
   function newRequestId() {
     try { return crypto.randomUUID(); } catch (e) { return 'r' + Math.random().toString(36).slice(2) + Date.now().toString(36); }
   }
-  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  async function post(body) {
-    for (var i = 1; i <= RETRY_MAX; i++) {
-      var ctl = typeof AbortController === 'function' ? new AbortController() : null;
-      var timer = ctl ? setTimeout(function () { ctl.abort(); }, ATTEMPT_TIMEOUT_MS) : null;
-      var j = null;
-      try {
-        var r = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                                       body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined });
-        j = await r.json();
-      } catch (e) { j = null; } finally { if (timer) clearTimeout(timer); }
-      if (j) {
-        if (!j.ok) {
-          if (j.authError && body.action !== 'login') { store(TOKEN_KEY, null); show('vLogin'); }
-          throw new Error(j.error || 'エラーが発生しました');
+
+  // 通信の記録：直前の操作の 所要ミリ秒・送った通数・成否 を覚えておき、次の依頼に添えてサーバへ渡す
+  // （往復を増やさずに、障害の頻度を監査ログで数えるため）。閉じても残るよう localStorage に置く。
+  function netSave(o) { try { localStorage.setItem(NET_KEY, JSON.stringify(o)); } catch (e) {} }
+  function netTake() {
+    try { var s = localStorage.getItem(NET_KEY); localStorage.removeItem(NET_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+  }
+
+  function post(body) {
+    var hedge = body.action !== 'login' && body.action !== 'chooseName';
+    var started = Date.now();
+    return new Promise(function (resolve, reject) {
+      var sent = 0, pending = 0, done = false, lastErr = null, ctls = [], hedgeTimer = null;
+      function finish(ok, val) {
+        if (done) return;
+        done = true;
+        clearTimeout(hedgeTimer);
+        ctls.forEach(function (c) { try { c.abort(); } catch (e) {} });
+        if (hedge) netSave({ a: body.action, ms: Date.now() - started, n: sent, ok: ok ? 1 : 0 });
+        if (ok) resolve(val); else reject(val);
+      }
+      function settled() {
+        // 返事が全部そろって、成功が無かったとき
+        if (done || pending > 0) return;
+        if (lastErr) { finish(false, lastErr); return; }
+        if (sent < SEND_MAX) { setTimeout(fire, 500 * Math.pow(2, sent - 1)); return; }
+        finish(false, new Error('通信がうまくいきませんでした。一覧を開き直して、記録されていなければもう一度押してください'));
+      }
+      function fire() {
+        if (done || sent >= SEND_MAX) return;
+        sent++; pending++;
+        if (sent > 1) msg('通信に時間がかかっています。もう一度送っています（' + sent + '/' + SEND_MAX + '）…', 'wait');
+        var ctl = typeof AbortController === 'function' ? new AbortController() : null;
+        if (ctl) ctls.push(ctl);
+        var timer = ctl ? setTimeout(function () { ctl.abort(); }, ATTEMPT_TIMEOUT_MS) : null;
+        // 通信の記録(net)は1通目にだけ付ける（重ねた分でサーバが二重に数えないように）
+        var payload = sent === 1 ? body : Object.assign({}, body, { net: undefined });
+        fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                         body: JSON.stringify(payload), signal: ctl ? ctl.signal : undefined })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j || typeof j !== 'object') throw new Error('bad');
+            pending--;
+            if (j.ok) { finish(true, j.data); return; }
+            if (j.authError && body.action !== 'login') { store(TOKEN_KEY, null); show('vLogin'); finish(false, new Error(j.error)); return; }
+            // 重ねた別の1通がまだ処理中（ロック待ちなど）のことがあるので、他の返事を待ってから誤りを出す
+            lastErr = new Error(j.error || 'エラーが発生しました');
+            settled();
+          })
+          .catch(function () { pending--; settled(); })
+          .then(function () { if (timer) clearTimeout(timer); });
+        if (hedge) {
+          clearTimeout(hedgeTimer);
+          hedgeTimer = setTimeout(function () { if (!done && !lastErr) fire(); }, HEDGE_MS);
         }
-        return j.data;
       }
-      if (i < RETRY_MAX) {
-        msg('通信が不安定なため、もう一度送っています（' + (i + 1) + '/' + RETRY_MAX + '）…', 'wait');
-        await sleep(1000 * Math.pow(2, i - 1));
-      }
-    }
-    throw new Error('通信がうまくいきませんでした。一覧を開き直して、記録されていなければもう一度押してください');
+      fire();
+    });
   }
   function authed(action, extra) {
-    return post(Object.assign({ action: action, token: load(TOKEN_KEY), requestId: newRequestId() }, extra || {}));
+    var b = Object.assign({ action: action, token: load(TOKEN_KEY), requestId: newRequestId() }, extra || {});
+    var net = netTake();
+    if (net) b.net = net;
+    return post(b);
   }
   function busy(b, on) { if (b) b.disabled = on; }
 
