@@ -93,6 +93,8 @@
   #helpOvl{z-index:15;}
   #helpOvl dt{font-size:12px;font-weight:700;color:var(--pri);margin-top:14px;}
   #helpOvl dd{margin:4px 0 0;font-size:15px;line-height:1.7;white-space:pre-line;}
+  #asName{font-size:13px;}
+  #asName a{color:var(--pri);}
   #qbar{margin-bottom:8px;}
   .qwait{display:flex;align-items:center;justify-content:space-between;gap:6px;background:#eef0f3;color:#555;border-radius:8px;padding:8px 10px;font-size:13px;}
   .qbad{width:100%;margin-top:6px;background:var(--warn);color:#7a5c00;font-size:14px;padding:10px;text-align:left;}
@@ -107,6 +109,7 @@
   <div id="vLogin" class="card hidden">
     <div class="muted">施設のPINを入れてください<button type="button" class="help" data-help="pin" aria-label="説明">?</button></div>
     <input id="pin" type="password" inputmode="numeric" autocomplete="off" style="margin-top:8px;">
+    <div id="asName" class="hint" style="margin-top:8px"></div>
     <button id="btnPin" class="full">次へ</button>
   </div>
 
@@ -153,7 +156,7 @@
 (function () {
   'use strict';
   var API_URL = 'https://script.google.com/macros/s/AKfycbwvBftiwCAktOd9zOw6Q4jCNmm3OE_mkpbUphGCU_lM4T_SMEVFobCEX-dqeZ8Fk8oP/exec';
-  var TOKEN_KEY = 'yuryo_token', DEVICE_KEY = 'yuryo_device';
+  var TOKEN_KEY = 'yuryo_token', DEVICE_KEY = 'yuryo_device', NAME_KEY = 'yuryo_name';
   var WD = ['日', '月', '火', '水', '木', '金', '土'];
   var LABEL = { '洗濯': '洗濯', 'ソープ代': 'ソープ代', '乾燥機': '乾燥機', '排泄介助': '排泄介助', '掃除': '掃除',
     '自費入浴': '入浴（自費）', '自費洗濯': '洗濯（自費）', '欠食_朝': '欠食 朝', '欠食_昼': '欠食 昼', '欠食_夕': '欠食 夕' };
@@ -175,14 +178,26 @@
     return e;
   }
   function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
-  function show(id) { ['vLogin', 'vNames', 'vMain'].forEach(function (v) { $(v).classList.toggle('hidden', v !== id); }); }
+  function show(id) {
+    ['vLogin', 'vNames', 'vMain'].forEach(function (v) { $(v).classList.toggle('hidden', v !== id); });
+    if (id === 'vLogin') showAsName();
+  }
+  function showAsName() {
+    var box = $('asName'); clear(box);
+    var n = load(NAME_KEY);
+    if (!n) return;
+    box.appendChild(el('span', { text: n + ' さんとして入ります　' }));
+    box.appendChild(el('a', { href: '#', text: '名前を変える', onclick: function (e) { e.preventDefault(); store(NAME_KEY, null); showAsName(); } }));
+  }
   function msg(text, kind) {
     var m = $('msg'); clear(m);
     if (text) m.appendChild(el('div', { cls: 'msg ' + (kind || 'err'), text: text }));
     if (kind === 'ok') setTimeout(function () { if (m.textContent === text) clear(m); }, 2500);
   }
-  function store(k, v) { try { if (v == null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch (e) {} }
-  function load(k) { try { return sessionStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  // ログイン状態と前回の名前は localStorage に置く（個人のスマホで使う前提。閉じて開き直しても12時間はPIN不要）。
+  // 以前は sessionStorage で、LINE などから開くたびに消えて PIN→名前 の2往復をやり直していた。
+  function store(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+  function load(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
   function deviceId() {
     var v = ''; try { v = localStorage.getItem(DEVICE_KEY) || ''; } catch (e) {}
     if (!v) { v = 'd' + Math.random().toString(36).slice(2) + Date.now().toString(36); try { localStorage.setItem(DEVICE_KEY, v); } catch (e) {} }
@@ -216,7 +231,7 @@
 
   // quiet: 裏で送るとき（送信待ち）は「もう一度送っています」を出さない
   function post(body, quiet) {
-    var hedge = body.action !== 'login' && body.action !== 'chooseName';
+    var hedge = true;   // login・chooseName もサーバが同じ requestId に同じ結果を返すので重ねてよい
     var started = Date.now();
     return new Promise(function (resolve, reject) {
       var sent = 0, pending = 0, done = false, lastErr = null, ctls = [], hedgeTimer = null;
@@ -287,7 +302,8 @@
     name: { title: '名前を選ぶ', body: [
       ['選ぶ名前', '必ず自分の名前を選んでください。記録には選んだ名前が残ります。'],
       ['名前が無いとき', '管理者に伝えてください（スタッフの一覧に足してもらいます）。'],
-      ['ログインの長さ', '一度入ると12時間はそのまま使えます。'] ] },
+      ['ログインの長さ', '一度入ると12時間は、画面を閉じて開き直してもそのまま使えます。'],
+      ['次から', '選んだ名前はこのスマホが覚えるので、次からはPINだけで入れます。別の人の名前で入るときは、PINの下の「名前を変える」を押してください。'] ] },
     date: { title: '日付', body: [
       ['ふだん', '今日の日付のまま記録します。'],
       ['付け忘れたとき', '◀ で日付を戻すと、その日の分として記録できます（45日前まで）。'],
@@ -414,10 +430,12 @@
   // ── ログイン ──
   $('btnPin').addEventListener('click', async function () {
     var btn = this;
-    busy(btn, true); msg('');
+    busy(btn, true); msg('確認中…', 'wait');
     try {
-      var d = await post({ action: 'login', pin: $('pin').value, deviceId: deviceId() });
+      var d = await post({ action: 'login', pin: $('pin').value, deviceId: deviceId(), name: load(NAME_KEY), requestId: newRequestId() });
       $('pin').value = '';
+      msg('');
+      if (d.token) { store(TOKEN_KEY, d.token); S.date = jstToday(); await refresh(); return; }   // 前回の名前で1往復
       S.ticket = d.ticket;
       var box = $('names'); clear(box);
       d.names.forEach(function (n) { box.appendChild(el('button', { text: n, onclick: function () { choose(n); } })); });
@@ -429,9 +447,12 @@
   async function choose(name) {
     msg('');
     try {
-      var d = await post({ action: 'chooseName', ticket: S.ticket, name: name });
+      msg('確認中…', 'wait');
+      var d = await post({ action: 'chooseName', ticket: S.ticket, name: name, requestId: newRequestId() });
       S.ticket = '';
       store(TOKEN_KEY, d.token);
+      store(NAME_KEY, d.name);
+      msg('');
       S.date = jstToday();
       await refresh();
     } catch (e) { msg(e.message); show('vLogin'); }
