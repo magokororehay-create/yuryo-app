@@ -93,6 +93,9 @@
   #helpOvl{z-index:15;}
   #helpOvl dt{font-size:12px;font-weight:700;color:var(--pri);margin-top:14px;}
   #helpOvl dd{margin:4px 0 0;font-size:15px;line-height:1.7;white-space:pre-line;}
+  #qbar{margin-bottom:8px;}
+  .qwait{display:flex;align-items:center;justify-content:space-between;gap:6px;background:#eef0f3;color:#555;border-radius:8px;padding:8px 10px;font-size:13px;}
+  .qbad{width:100%;margin-top:6px;background:var(--warn);color:#7a5c00;font-size:14px;padding:10px;text-align:left;}
   .names button{display:block;width:100%;margin-top:8px;background:var(--pri-weak);color:var(--pri);font-size:17px;}
 </style>
 </head>
@@ -114,6 +117,7 @@
 
   <div id="vMain" class="hidden">
     <div class="who"><span id="me"></span><a href="#" id="logout">ログアウト</a></div>
+    <div id="qbar" class="hidden"></div>
     <div class="bar" id="dayBar">
       <button id="prev" class="sub">◀</button>
       <div class="date"><span id="dateLabel"></span><button type="button" class="help" data-help="date" aria-label="説明">?</button></div>
@@ -155,7 +159,7 @@
     '自費入浴': '入浴（自費）', '自費洗濯': '洗濯（自費）', '欠食_朝': '欠食 朝', '欠食_昼': '欠食 昼', '欠食_夕': '欠食 夕' };
   var SIMPLE = ['洗濯', 'ソープ代', '排泄介助', '掃除', '自費入浴', '自費洗濯'];
   var BULK = ['洗濯', 'ソープ代', '排泄介助', '掃除'];
-  var S = { ticket: '', date: '', view: null, mode: 'res' };
+  var S = { ticket: '', date: '', base: null, view: null, mode: 'res', sheetRid: '' };
 
   function $(id) { return document.getElementById(id); }
   // 入居者名・スタッフ名はシート由来なので、必ず textContent で入れる（innerHTML に混ぜない）
@@ -210,7 +214,8 @@
     try { var s = localStorage.getItem(NET_KEY); localStorage.removeItem(NET_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; }
   }
 
-  function post(body) {
+  // quiet: 裏で送るとき（送信待ち）は「もう一度送っています」を出さない
+  function post(body, quiet) {
     var hedge = body.action !== 'login' && body.action !== 'chooseName';
     var started = Date.now();
     return new Promise(function (resolve, reject) {
@@ -228,12 +233,14 @@
         if (done || pending > 0) return;
         if (lastErr) { finish(false, lastErr); return; }
         if (sent < SEND_MAX) { setTimeout(fire, 500 * Math.pow(2, sent - 1)); return; }
-        finish(false, new Error('通信がうまくいきませんでした。一覧を開き直して、記録されていなければもう一度押してください'));
+        var ne = new Error('通信がうまくいきませんでした。電波の良い所でもう一度お試しください');
+        ne.net = true;
+        finish(false, ne);
       }
       function fire() {
         if (done || sent >= SEND_MAX) return;
         sent++; pending++;
-        if (sent > 1) msg('通信に時間がかかっています。もう一度送っています（' + sent + '/' + SEND_MAX + '）…', 'wait');
+        if (sent > 1 && !quiet) msg('通信に時間がかかっています。もう一度送っています（' + sent + '/' + SEND_MAX + '）…', 'wait');
         var ctl = typeof AbortController === 'function' ? new AbortController() : null;
         if (ctl) ctls.push(ctl);
         var timer = ctl ? setTimeout(function () { ctl.abort(); }, ATTEMPT_TIMEOUT_MS) : null;
@@ -246,7 +253,10 @@
             if (!j || typeof j !== 'object') throw new Error('bad');
             pending--;
             if (j.ok) { finish(true, j.data); return; }
-            if (j.authError && body.action !== 'login') { store(TOKEN_KEY, null); show('vLogin'); finish(false, new Error(j.error)); return; }
+            if (j.authError && body.action !== 'login') {
+              store(TOKEN_KEY, null); show('vLogin');
+              var ae = new Error(j.error); ae.auth = true; finish(false, ae); return;
+            }
             // 重ねた別の1通がまだ処理中（ロック待ちなど）のことがあるので、他の返事を待ってから誤りを出す
             lastErr = new Error(j.error || 'エラーが発生しました');
             settled();
@@ -262,11 +272,9 @@
     });
   }
   function authed(action, extra) {
-    var b = Object.assign({ action: action, token: load(TOKEN_KEY), requestId: newRequestId() }, extra || {});
-    var net = netTake();
-    if (net) b.net = net;
-    return post(b);
+    return post(withNet(Object.assign({ action: action, token: load(TOKEN_KEY), requestId: newRequestId() }, extra || {})));
   }
+  function withNet(b) { var net = netTake(); if (net) b.net = net; return b; }
   function busy(b, on) { if (b) b.disabled = on; }
 
   // ── 「？」の説明（休暇管理アプリと同じ形：押すと下から説明が出る）──
@@ -286,7 +294,7 @@
       ['できないこと', '明日以降の日付には記録できません。締めた月（前の月の請求が終わった月）にも記録できません。'] ] },
     res: { title: '「人から」の使い方', body: [
       ['使う場面', '1人の入居者に、いくつかのことをまとめて付けたいとき。'],
-      ['手順', '① 入居者の名前を押す\n② 出てきたボタンから、したことを押す\n③ 上に「記録しました」と出れば完了'],
+      ['手順', '① 入居者の名前を押す\n② 出てきたボタンから、したことを押す\n③ 上に「記録しました」と出れば完了（シートへは裏で送ります。⏳ は送信待ち）'],
       ['名前の横の印', '🧺洗濯・🛁入浴 … 今日が予定日\n✓ が付いたら記録済み'] ] },
     item: { title: '「項目から」の使い方', body: [
       ['使う場面', '洗濯やソープ代など、1つのことを何人分もまとめて付けたいとき。'],
@@ -339,6 +347,11 @@
       ['見られるもの', 'この人のこの日の記録と、記録した人の名前。'],
       ['取消', '間違えて押したときは [取消] を押します。取り消せるのは自分が記録したものだけです（管理者は全員分）。'],
       ['他の人の間違い', '記録した本人かリーダーに伝えてください。'] ] },
+    outbox: { title: '送信待ち', body: [
+      ['意味', '押した記録はすぐ画面に出ますが、シートへは裏で順番に送っています。⏳ が付いているものは、まだ送り終わっていません。そのまま次の記録を続けてかまいません。'],
+      ['電波が悪いとき', 'この端末に残しておき、電波が戻ると自動で送ります。画面を閉じても消えず、次に同じ名前で入ると送ります。'],
+      ['⚠ 確認が必要', 'ほかの人が先に同じ記録をしていたときや、送れなかったときに出ます。押して、記録するかやめるかを選んでください。'],
+      ['してはいけないこと', '送信待ちが残っているうちは、ブラウザの履歴やデータの消去をしないでください（送る前の記録が消えます）。'] ] },
     unconfirmed: { title: 'まだ確認されていない日', body: [
       ['意味', '最近の日で、夕方の [確認完了] が押されていない日です。'],
       ['すること', '日付を押すとその日に移るので、漏れを確かめて [確認完了] を押してください。'] ] },
@@ -425,6 +438,8 @@
   }
   $('logout').addEventListener('click', async function (e) {
     e.preventDefault();
+    var w = myQ().length;
+    if (w && !window.confirm('送信待ち・確認が必要な記録が' + w + '件あります。\nログアウトしてもこの端末に残り、次に同じ名前で入ると送ります。ログアウトしますか？')) return;
     try { await authed('logout'); } catch (x) {}
     store(TOKEN_KEY, null); show('vLogin');
   });
@@ -432,9 +447,10 @@
   // ── 表示 ──
   async function refresh() {
     try {
-      S.view = await authed('day', { date: S.date });
+      S.base = await authed('day', { date: S.date });
       show('vMain');
       render();
+      pump();
     } catch (e) { msg(e.message); }
   }
   $('prev').addEventListener('click', function () { S.date = shift(S.date, -1); refresh(); });
@@ -448,7 +464,8 @@
   function has(rid, item) { return recsOf(rid).some(function (r) { return r.item === item; }); }
 
   function render() {
-    var v = S.view;
+    var v = S.view = derive(S.base);
+    qbar();
     $('me').textContent = v.me + (v.admin ? '（管理者）' : '') + ' さん';
     $('dateLabel').textContent = dateJa(v.date) + (v.date === v.today ? ' 今日' : '');
     $('next').disabled = v.date >= v.today;
@@ -496,6 +513,7 @@
   function openRes(rid) {
     var r = S.view.residents.filter(function (x) { return x.id === rid; })[0];
     if (!r) return;
+    S.sheetRid = rid;
     var sh = $('sheet'); clear(sh);
     sh.appendChild(el('h2', { text: r.room + ' ' + r.name + ' さん' }));
     if (r.away) sh.appendChild(el('div', { cls: 'banner', text: '入院・外泊中です' }));
@@ -544,9 +562,9 @@
     if (!recs.length) sh.appendChild(el('div', { cls: 'muted', text: 'まだありません' }));
     recs.forEach(function (x) {
       var cancel = x.mine || S.view.admin
-        ? el('button', { text: '取消', onclick: function () { undo(x.id, cancel); } }) : null;
+        ? el('button', { text: '取消', onclick: function () { undo(x.id); } }) : null;
       if (cancel) cancel.disabled = dis;
-      sh.appendChild(el('div', { cls: 'rec' }, [el('span', { text: itemName(x) + '（' + x.by + '）' }), cancel]));
+      sh.appendChild(el('div', { cls: 'rec' }, [el('span', { text: itemName(x) + '（' + x.by + '）' + (x.pending ? ' ⏳送信待ち' : '') }), cancel]));
     });
     sh.appendChild(el('button', { cls: 'sub full', text: '閉じる', onclick: closeSheet }));
     $('ovl').classList.remove('hidden');
@@ -559,7 +577,7 @@
     if (x.item === '乾燥機') return '乾燥機 ' + x.qty + '分';
     return (LABEL[x.item] || x.item) + (x.qty > 1 ? ' ×' + x.qty : '');
   }
-  function closeSheet() { $('ovl').classList.add('hidden'); }
+  function closeSheet() { $('ovl').classList.add('hidden'); S.sheetRid = ''; }
   $('ovl').addEventListener('click', function (e) { if (e.target === this) closeSheet(); });
 
   // ── 項目から：まとめて記録 ──
@@ -597,38 +615,193 @@
     sending = on;
     document.querySelectorAll('#sheet button, #pItem button, #pCheck button, #pCheck select, #pCheck input, #pAdmin button, #pAdmin select, #pAdmin input').forEach(function (b) { if (on) { b.dataset.was = b.disabled ? '1' : ''; b.disabled = true; } else if (b.dataset.was !== undefined) { b.disabled = b.dataset.was === '1'; } });
   }
+  // ── 送信待ち（押したらすぐ画面に出し、送るのは裏で）──
+  // GAS の結果の配信が止まる障害があり、押すたびに待たせると現場が止まる。そこで記録・取消は
+  // 端末（localStorage）に貯めてすぐ画面に反映し、1件ずつ順番に裏で送る。画面を閉じても残り、
+  // 次に同じ名前で開いたときに送る。記録IDは requestId から決まる（Code.gs ridBase_ と同じ規則）ので、
+  // 何度送り直しても二重に書かれず、送り終わる前の記録も取り消せる。端末には氏名を置かない（入居者ID・項目だけ）。
+  // op: { rid, kind:'add'|'cancel', me, date, entries:[{residentId,item,qty}], recordId, force,
+  //       state:'wait'|'confirm'|'error', dups, error, at }
+  var OUTBOX_KEY = 'yuryo_outbox';
+  var Q = (function () { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]') || []; } catch (e) { return []; } })();
+  var inflight = '', working = false, retryTimer = null, retryWait = 5000, offline = false;
+  function saveQ() { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(Q)); } catch (e) {} }
+  function ridBase(rid) { return String(rid).replace(/[^A-Za-z0-9]/g, '').slice(0, 16); }
+  function myQ() { return S.base ? Q.filter(function (o) { return o.me === S.base.me; }) : []; }
+  function dropQ(o) { Q = Q.filter(function (x) { return x !== o; }); saveQ(); }
+
+  // サーバの一覧に、まだ送れていない自分の記録・取消を重ねたものを画面に出す
+  function derive(b) {
+    var recs = b.records.slice(), pend = {};
+    myQ().forEach(function (o) {
+      if (o.date !== b.date || o.state !== 'wait') return;
+      if (o.kind === 'add') {
+        o.entries.forEach(function (e, i) {
+          var id = ridBase(o.rid) + '-' + (i + 1);
+          if (recs.some(function (r) { return r.id === id; })) return;
+          recs.push({ id: id, residentId: e.residentId, item: e.item, qty: e.qty == null ? 1 : e.qty, by: b.me, type: '記録', mine: true, pending: true });
+          pend[e.residentId + '|' + e.item] = true;
+        });
+      } else {
+        recs = recs.filter(function (r) { return r.id !== o.recordId; });
+      }
+    });
+    var check = Object.assign({}, b.check, { missing: b.check.missing.filter(function (m) { return !pend[m.residentId + '|' + m.item]; }) });
+    return Object.assign({}, b, { records: recs, check: check });
+  }
+
+  // 裏で1件ずつ順番に送る（取消が記録より先に届かないように）
+  async function pump() {
+    if (working || !S.base || !load(TOKEN_KEY)) { qbar(); return; }
+    var o = myQ().filter(function (x) { return x.state === 'wait'; })[0];
+    if (!o) { offline = false; qbar(); return; }
+    working = true; inflight = o.rid; qbar();
+    try {
+      var extra = o.kind === 'add' ? { date: o.date, entries: o.entries, force: !!o.force } : { recordId: o.recordId };
+      var d = await post(Object.assign({ action: o.kind, token: load(TOKEN_KEY), requestId: o.rid }, withNet(extra)), true);
+      if (d.needConfirm) { o.state = 'confirm'; o.dups = d.duplicates; saveQ(); }
+      else dropQ(o);
+      if (d.view && S.base && d.view.date === S.base.date) S.base = d.view;
+      offline = false; retryWait = 5000;
+      working = false; inflight = '';
+      rerender();
+      if (d.needConfirm) msg('確認が必要な記録があります（上の ⚠ を押してください）');
+      pump();
+    } catch (e) {
+      working = false; inflight = '';
+      if (e.net) {          // 電波が悪い：置いたまま、少し待って送り直す
+        offline = true;
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(pump, retryWait);
+        retryWait = Math.min(retryWait * 2, 120000);
+        qbar();
+        return;
+      }
+      if (e.auth) { qbar(); return; }   // ログインし直したら続きから送る
+      o.state = 'error'; o.error = e.message; saveQ();
+      rerender();
+      msg('送れなかった記録があります（上の ⚠ を押してください）');
+      pump();
+    }
+  }
+  window.addEventListener('online', function () { retryWait = 5000; pump(); });
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') pump(); });
+
+  // 送信待ちの帯（件数と、確認が必要なもの）
+  function qbar() {
+    var bar = $('qbar'); clear(bar);
+    var mine = myQ();
+    var wait = mine.filter(function (o) { return o.state === 'wait'; }).length;
+    var bad = mine.filter(function (o) { return o.state !== 'wait'; }).length;
+    var other = S.base ? Q.filter(function (o) { return o.me !== S.base.me; }).length : 0;
+    if (wait) bar.appendChild(el('div', { cls: 'qwait' }, [el('span', { text: '⏳ 送信待ち ' + wait + '件' + (offline ? '（電波の良い所で自動で送ります）' : '（送っています）') }), hb('outbox')]));
+    if (bad) bar.appendChild(el('button', { cls: 'qbad', text: '⚠ 確認が必要な記録 ' + bad + '件（押して確認）', onclick: openProblems }));
+    if (other) bar.appendChild(el('div', { cls: 'hint', text: 'この端末に、ほかの名前の送信待ちが ' + other + '件あります（その名前で入ると送られます）' }));
+    bar.classList.toggle('hidden', !wait && !bad && !other);
+  }
+
+  // 裏で送り終わったときの描き直し。入力の途中を消さないようにする。
+  function rerender() {
+    qbar();
+    if (!S.base || $('vMain').classList.contains('hidden') || S.mode === 'admin') return;
+    if (S.mode === 'check' && $('pCheck').contains(document.activeElement)) return;
+    var checked = S.mode === 'item'
+      ? Array.prototype.map.call($('bulkList').querySelectorAll('input:checked'), function (c) { return c.value; }) : [];
+    var sheetRid = $('ovl').classList.contains('hidden') ? '' : S.sheetRid;
+    var top = $('sheet').scrollTop;
+    render();
+    checked.forEach(function (id) {
+      var c = $('bulkList').querySelector('input[value="' + id + '"]');
+      if (c && !c.disabled) c.checked = true;
+    });
+    if (sheetRid) { openRes(sheetRid); $('sheet').scrollTop = top; }
+  }
+
+  function resName(id) {
+    var r = S.base && S.base.residents.filter(function (x) { return x.id === id; })[0];
+    return r ? r.room + ' ' + r.name : '入居者';
+  }
+  function describe(o) {
+    if (o.kind === 'cancel') return dateJa(o.date) + ' 記録の取消';
+    return dateJa(o.date) + ' ' + o.entries.map(function (e) {
+      return resName(e.residentId) + ' さん ' + (LABEL[e.item] || itemName({ item: e.item, qty: e.qty }));
+    }).join('、');
+  }
+
+  // 確認が必要な記録の一覧（重複の確認・送れなかったもの）
+  function openProblems() {
+    var sh = $('sheet'); clear(sh); S.sheetRid = '';
+    sh.appendChild(el('h2', { text: '確認が必要な記録' }));
+    var list = myQ().filter(function (o) { return o.state !== 'wait'; });
+    if (!list.length) sh.appendChild(el('div', { cls: 'muted', text: 'ありません' }));
+    list.forEach(function (o) {
+      var box = el('div', { cls: 'miss' }, [el('div', { cls: 'mhead', text: describe(o) })]);
+      if (o.state === 'confirm') {
+        box.appendChild(el('div', { cls: 'warn', text: 'ほかの人が先に記録していました：' + (o.dups || []).map(function (x) {
+          return x.name + ' さん ' + (LABEL[x.item] || x.item) + '（' + x.by + ' さん）'; }).join('、') }));
+        box.appendChild(el('div', { cls: 'row' }, [
+          el('button', { text: 'もう1回分として記録', onclick: function () { o.state = 'wait'; o.force = true; saveQ(); closeSheet(); rerender(); pump(); } }),
+          el('button', { cls: 'sub', text: 'やめる', onclick: function () { dropQ(o); closeSheet(); rerender(); } }),
+        ]));
+      } else {
+        box.appendChild(el('div', { cls: 'warn', text: o.error || '送れませんでした' }));
+        box.appendChild(el('div', { cls: 'row' }, [
+          el('button', { text: 'もう一度送る', onclick: function () { o.state = 'wait'; o.error = ''; saveQ(); closeSheet(); rerender(); pump(); } }),
+          el('button', { cls: 'sub', text: '消す', onclick: function () { if (window.confirm('この記録を消しますか？（送られません）')) { dropQ(o); closeSheet(); rerender(); } } }),
+        ]));
+      }
+      sh.appendChild(box);
+    });
+    sh.appendChild(el('button', { cls: 'sub full', text: '閉じる', onclick: closeSheet }));
+    $('ovl').classList.remove('hidden');
+  }
+
   function apply(view, reopen) {
-    S.view = view;
+    S.base = view;
     render();
     if (reopen) openRes(reopen);
   }
-  async function send(entries, btn, force) {
-    if (sending) return;
-    var reopen = !$('ovl').classList.contains('hidden') ? entries[0].residentId : '';
-    lockAll(true); msg('記録中…', 'wait');
-    try {
-      var d = await authed('add', { date: S.date, entries: entries, force: !!force });
-      if (d.needConfirm) {
-        lockAll(false); msg('');
-        var lines = d.duplicates.map(function (x) { return '・' + x.name + ' さん ' + (LABEL[x.item] || x.item) + '（' + x.by + ' さんが記録済み）'; });
-        if (window.confirm('すでに記録があります。もう1回分として記録しますか？\n' + lines.join('\n'))) return send(entries, btn, true);
-        return;
-      }
-      lockAll(false);
-      apply(d.view, reopen);
-      msg(d.added + '件 記録しました', 'ok');
-    } catch (e) { lockAll(false); msg(e.message); }
+
+  // 記録：重複は端末で分かる範囲で先に確かめ、すぐ画面に出して、送るのは裏で
+  function send(entries) {
+    var v = S.view;
+    if (!v || v.closed) return;
+    var dups = [];
+    entries.forEach(function (e) {
+      v.records.forEach(function (r) {
+        if (r.type === '記録' && r.residentId === e.residentId && r.item === e.item) {
+          dups.push('・' + resName(e.residentId) + ' さん ' + (LABEL[e.item] || itemName(r)) + '（' + r.by + ' さんが記録済み）');
+        }
+      });
+    });
+    if (dups.length && !window.confirm('すでに記録があります。もう1回分として記録しますか？\n' + dups.join('\n'))) return;
+    Q.push({ rid: newRequestId(), kind: 'add', me: v.me, date: v.date, force: dups.length > 0, state: 'wait', at: Date.now(),
+             entries: entries.map(function (e) { var x = { residentId: e.residentId, item: e.item }; if (e.qty != null) x.qty = e.qty; return x; }) });
+    saveQ();
+    rerender();
+    msg(entries.length + '件 記録しました', 'ok');
+    pump();
   }
-  async function undo(id, btn) {
-    if (sending || !window.confirm('この記録を取り消しますか？')) return;
-    var rid = (S.view.records.filter(function (r) { return r.id === id; })[0] || {}).residentId;
-    lockAll(true); msg('取り消し中…', 'wait');
-    try {
-      var d = await authed('cancel', { recordId: id });
-      lockAll(false);
-      apply(d.view, rid);
-      msg('取り消しました', 'ok');
-    } catch (e) { lockAll(false); msg(e.message); }
+
+  // 取消：まだ送っていない記録なら端末の中で消すだけ。送信中のものは送り終わるまで待ってもらう。
+  function undo(id) {
+    if (!window.confirm('この記録を取り消しますか？')) return;
+    var hit = null;
+    myQ().forEach(function (o) {
+      if (o.kind !== 'add' || o.state !== 'wait') return;
+      o.entries.forEach(function (e, i) { if (ridBase(o.rid) + '-' + (i + 1) === id) hit = { o: o, i: i }; });
+    });
+    if (hit) {
+      if (inflight === hit.o.rid) { msg('いま送っているところです。少し待ってから取り消してください'); return; }
+      hit.o.entries.splice(hit.i, 1);
+      if (!hit.o.entries.length) dropQ(hit.o); else saveQ();
+    } else {
+      Q.push({ rid: newRequestId(), kind: 'cancel', me: S.base.me, date: S.base.date, recordId: id, state: 'wait', at: Date.now() });
+      saveQ();
+    }
+    rerender();
+    msg('取り消しました', 'ok');
+    pump();
   }
 
   // 記録以外の操作（今日は無し・入院外泊・確認完了）。応答の view で描き直す（1往復）。
@@ -721,7 +894,7 @@
     recs.forEach(function (x) {
       var r = byId[x.residentId];
       var what = x.type === 'なし' ? (LABEL[x.item] || x.item) + ' 今日は無し' : itemName(x);
-      det.appendChild(el('div', { cls: 'rec' }, [el('span', { text: (r ? r.room + ' ' + r.name + '　' : '') + what + '（' + x.by + '）' })]));
+      det.appendChild(el('div', { cls: 'rec' }, [el('span', { text: (r ? r.room + ' ' + r.name + '　' : '') + what + '（' + x.by + '）' + (x.pending ? ' ⏳' : '') })]));
     });
     box.appendChild(det);
 
@@ -731,6 +904,8 @@
     } else {
       box.appendChild(el('button', { cls: 'full', text: '確認完了', onclick: function () {
         if (c.missing.length && !window.confirm('漏れが' + c.missing.length + '件残っています。確認完了にしますか？')) return;
+        var w = myQ().length;
+        if (w && !window.confirm('あなたの送信待ち・確認が必要な記録が' + w + '件あります。このまま確認完了にしますか？')) return;
         act('confirm', { date: S.date }, '記録中…', '確認完了にしました');
       } }));
     }
