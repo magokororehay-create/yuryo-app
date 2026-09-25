@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<title>有料サービス記録</title>
+<style>
+  :root{--bg:#f5f5f7;--card:#fff;--ink:#1d1d1f;--mute:#8a8a8e;--line:#eee;--pri:#0f7c80;--pri-weak:#e3f3f3;--warn:#fff3cd;--err:#ffe8e8;}
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;margin:0;background:var(--bg);color:var(--ink);}
+  .wrap{max-width:480px;margin:0 auto;padding:12px 16px 96px;}
+  h1{font-size:19px;margin:8px 0 12px;}
+  .card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+  input,select{width:100%;padding:12px;font-size:17px;border:1px solid #ccc;border-radius:8px;}
+  button{font-size:16px;border:none;border-radius:10px;padding:12px;background:var(--pri);color:#fff;cursor:pointer;}
+  button.sub{background:#eef0f3;color:var(--ink);}
+  button:disabled{background:#bbb;}
+  /* 色付きボタン（.grid 等）は背景指定が勝つので、押せない状態は薄さで示す */
+  button:disabled{opacity:.5;cursor:default;}
+  .full{width:100%;margin-top:12px;}
+  .bar{display:flex;align-items:center;gap:8px;}
+  .bar .date{flex:1;text-align:center;font-weight:700;font-size:17px;}
+  .bar button{padding:10px 14px;}
+  .who{font-size:12px;color:var(--mute);display:flex;justify-content:space-between;margin-bottom:8px;}
+  .who a{color:var(--pri);}
+  .tabs{display:flex;gap:6px;margin:10px 0;}
+  .tabs button{flex:1;background:#e6e8eb;color:var(--ink);white-space:nowrap;padding:12px 4px;font-size:15px;}
+  .tabs button.on{background:var(--pri);color:#fff;}
+  .res{display:flex;align-items:center;padding:12px 4px;border-bottom:1px solid var(--line);gap:8px;cursor:pointer;flex-wrap:wrap;}
+  .res:last-child{border-bottom:none;}
+  .res .rm{width:42px;color:var(--mute);font-size:13px;}
+  .res .nm{flex:1;font-size:16px;}
+  .tag{font-size:12px;border-radius:10px;padding:2px 8px;background:#eef0f3;color:#555;white-space:nowrap;}
+  .tag.due{background:#fff0d6;color:#8a5a00;}
+  .tag.done{background:var(--pri-weak);color:var(--pri);}
+  .tag.away{background:#eee;color:#888;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .grid button{background:var(--pri-weak);color:var(--pri);font-weight:600;padding:14px 8px;}
+  .meals{display:flex;gap:8px;}
+  .meals button{flex:1;background:#eef0f3;color:var(--ink);}
+  .meals button.on{background:#c0392b;color:#fff;}
+  .row{display:flex;gap:8px;align-items:center;margin-top:8px;}
+  .row select{flex:1;min-width:0;}
+  .row input{width:72px;text-align:center;}
+  .sect{font-size:13px;color:var(--mute);font-weight:700;margin:14px 0 6px;}
+  .rec{display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:8px 0;border-bottom:1px dashed var(--line);gap:8px;}
+  .rec button{padding:6px 10px;font-size:13px;background:#eef0f3;color:#b00;}
+  .chk{display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid var(--line);font-size:16px;}
+  .chk input{width:22px;height:22px;flex:none;}
+  .chk.done{color:var(--mute);}
+  /* 通知は入居者シート(.ovl)の上にも出るよう固定表示にする。押すと消える */
+  #msg{position:fixed;top:8px;left:50%;transform:translateX(-50%);width:calc(100% - 32px);max-width:448px;z-index:20;}
+  .msg{padding:12px;border-radius:10px;font-size:15px;white-space:pre-line;box-shadow:0 2px 8px rgba(0,0,0,.15);}
+  .msg.err{background:var(--err);color:#b00;}
+  .msg.ok{background:var(--pri-weak);color:var(--pri);}
+  .msg.wait{background:#1d1d1f;color:#fff;}
+  .banner{background:var(--warn);color:#7a5c00;padding:10px;border-radius:8px;font-size:14px;margin-bottom:10px;}
+  .ovl{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center;z-index:10;}
+  .sheet{background:var(--card);width:100%;max-width:480px;max-height:88vh;overflow-y:auto;border-radius:16px 16px 0 0;padding:16px 16px 28px;}
+  .sheet h2{font-size:18px;margin:0 0 10px;}
+  .miss{padding:10px 0;border-bottom:1px solid var(--line);}
+  .mhead{font-size:15px;margin-bottom:6px;}
+  .row button{white-space:nowrap;}
+  .row input.dt{width:auto;flex:1.6;min-width:0;text-align:left;}
+  .jumps{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+  .jumps button{padding:6px 12px;}
+  .hint{font-size:12px;color:var(--mute);margin-top:4px;}
+  details{margin-top:16px;}
+  summary{font-size:13px;color:var(--mute);font-weight:700;cursor:pointer;}
+  .okbox{background:var(--pri-weak);color:var(--pri);padding:12px;border-radius:10px;margin-top:16px;text-align:center;font-weight:600;}
+  .hidden{display:none !important;}
+  .muted{color:var(--mute);font-size:13px;}
+  .gd{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px;}
+  .gd .gn{flex:1;min-width:0;}
+  .gd .gp{color:var(--mute);font-size:12px;white-space:nowrap;}
+  .gd input{width:64px;padding:8px;text-align:center;font-size:16px;}
+  .sum{display:flex;justify-content:space-between;padding:6px 0;font-size:15px;border-bottom:1px dashed var(--line);}
+  .sum b{font-variant-numeric:tabular-nums;}
+  .warn{font-size:13px;color:#7a5c00;background:var(--warn);border-radius:6px;padding:6px 8px;margin-top:4px;}
+  .names button{display:block;width:100%;margin-top:8px;background:var(--pri-weak);color:var(--pri);font-size:17px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>有料サービス記録</h1>
+  <div id="msg"></div>
+
+  <div id="vLogin" class="card hidden">
+    <div class="muted">施設のPINを入れてください</div>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="off" style="margin-top:8px;">
+    <button id="btnPin" class="full">次へ</button>
+  </div>
+
+  <div id="vNames" class="card hidden">
+    <div class="muted">自分の名前を選んでください</div>
+    <div id="names" class="names"></div>
+  </div>
+
+  <div id="vMain" class="hidden">
+    <div class="who"><span id="me"></span><a href="#" id="logout">ログアウト</a></div>
+    <div class="bar" id="dayBar">
+      <button id="prev" class="sub">◀</button>
+      <div class="date" id="dateLabel"></div>
+      <button id="next" class="sub">▶</button>
+    </div>
+    <div id="closed" class="banner hidden">この月は締め済みのため、記録できません</div>
+    <div class="tabs">
+      <button id="tabRes" class="on">人から</button>
+      <button id="tabItem">項目から</button>
+      <button id="tabCheck">確認</button>
+      <button id="tabAdmin" class="hidden">管理</button>
+    </div>
+    <div id="pRes" class="card"></div>
+    <div id="pItem" class="card hidden">
+      <select id="bulkItem"></select>
+      <div id="bulkList"></div>
+      <button id="bulkGo" class="full">まとめて記録</button>
+    </div>
+    <div id="pCheck" class="card hidden"></div>
+    <div id="pAdmin" class="card hidden"></div>
+  </div>
+</div>
+
+<div id="ovl" class="ovl hidden"><div class="sheet" id="sheet"></div></div>
+
+<script>
+(function () {
+  'use strict';
+  var API_URL = 'https://script.google.com/macros/s/AKfycbwvBftiwCAktOd9zOw6Q4jCNmm3OE_mkpbUphGCU_lM4T_SMEVFobCEX-dqeZ8Fk8oP/exec';
+  var TOKEN_KEY = 'yuryo_token', DEVICE_KEY = 'yuryo_device';
+  var WD = ['日', '月', '火', '水', '木', '金', '土'];
+  var LABEL = { '洗濯': '洗濯', 'ソープ代': 'ソープ代', '乾燥機': '乾燥機', '排泄介助': '排泄介助', '掃除': '掃除',
+    '自費入浴': '入浴（自費）', '自費洗濯': '洗濯（自費）', '欠食_朝': '欠食 朝', '欠食_昼': '欠食 昼', '欠食_夕': '欠食 夕' };
+  var SIMPLE = ['洗濯', 'ソープ代', '排泄介助', '掃除', '自費入浴', '自費洗濯'];
+  var BULK = ['洗濯', 'ソープ代', '排泄介助', '掃除'];
+  var S = { ticket: '', date: '', view: null, mode: 'res' };
+
+  function $(id) { return document.getElementById(id); }
+  // 入居者名・スタッフ名はシート由来なので、必ず textContent で入れる（innerHTML に混ぜない）
+  function el(tag, props, kids) {
+    var e = document.createElement(tag);
+    Object.keys(props || {}).forEach(function (k) {
+      if (k === 'text') e.textContent = props[k];
+      else if (k === 'cls') e.className = props[k];
+      else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]);
+      else e.setAttribute(k, props[k]);
+    });
+    (kids || []).forEach(function (c) { if (c) e.appendChild(c); });
+    return e;
+  }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+  function show(id) { ['vLogin', 'vNames', 'vMain'].forEach(function (v) { $(v).classList.toggle('hidden', v !== id); }); }
+  function msg(text, kind) {
+    var m = $('msg'); clear(m);
+    if (text) m.appendChild(el('div', { cls: 'msg ' + (kind || 'err'), text: text }));
+    if (kind === 'ok') setTimeout(function () { if (m.textContent === text) clear(m); }, 2500);
+  }
+  function store(k, v) { try { if (v == null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch (e) {} }
+  function load(k) { try { return sessionStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function deviceId() {
+    var v = ''; try { v = localStorage.getItem(DEVICE_KEY) || ''; } catch (e) {}
+    if (!v) { v = 'd' + Math.random().toString(36).slice(2) + Date.now().toString(36); try { localStorage.setItem(DEVICE_KEY, v); } catch (e) {} }
+    return v.slice(0, 64);
+  }
+  function jstToday() { return new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10); }
+  function shift(d, n) { var t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); }
+  function dateJa(d) { var t = new Date(d + 'T00:00:00Z'); return (t.getUTCMonth() + 1) + '/' + t.getUTCDate() + '（' + WD[t.getUTCDay()] + '）'; }
+
+  // Google 側の結果配信が止まったり「ページが見つかりません」の HTML を返す障害がある
+  // （2026-09-15 モニタリングアプリ、2026-09-26 このアプリで確認。GAS の処理自体は成功している）。
+  // JSON が取れないときだけ自動で再送する。書き込み系は同じ requestId で再送するので、サーバが二重に書かない。
+  var RETRY_MAX = 5, ATTEMPT_TIMEOUT_MS = 30000;
+  function newRequestId() {
+    try { return crypto.randomUUID(); } catch (e) { return 'r' + Math.random().toString(36).slice(2) + Date.now().toString(36); }
+  }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  async function post(body) {
+    for (var i = 1; i <= RETRY_MAX; i++) {
+      var ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      var timer = ctl ? setTimeout(function () { ctl.abort(); }, ATTEMPT_TIMEOUT_MS) : null;
+      var j = null;
+      try {
+        var r = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                       body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined });
+        j = await r.json();
+      } catch (e) { j = null; } finally { if (timer) clearTimeout(timer); }
+      if (j) {
+        if (!j.ok) {
+          if (j.authError && body.action !== 'login') { store(TOKEN_KEY, null); show('vLogin'); }
+          throw new Error(j.error || 'エラーが発生しました');
+        }
+        return j.data;
+      }
+      if (i < RETRY_MAX) {
+        msg('通信が不安定なため、もう一度送っています（' + (i + 1) + '/' + RETRY_MAX + '）…', 'wait');
+        await sleep(1000 * Math.pow(2, i - 1));
+      }
+    }
+    throw new Error('通信がうまくいきませんでした。一覧を開き直して、記録されていなければもう一度押してください');
+  }
+  function authed(action, extra) {
+    return post(Object.assign({ action: action, token: load(TOKEN_KEY), requestId: newRequestId() }, extra || {}));
+  }
+  function busy(b, on) { if (b) b.disabled = on; }
+
+  // ── ログイン ──
+  $('btnPin').addEventListener('click', async function () {
+    var btn = this;
+    busy(btn, true); msg('');
+    try {
+      var d = await post({ action: 'login', pin: $('pin').value, deviceId: deviceId() });
+      $('pin').value = '';
+      S.ticket = d.ticket;
+      var box = $('names'); clear(box);
+      d.names.forEach(function (n) { box.appendChild(el('button', { text: n, onclick: function () { choose(n); } })); });
+      show('vNames');
+    } catch (e) { msg(e.message); } finally { busy(btn, false); }
+  });
+  $('msg').addEventListener('click', function () { if (!sending) clear(this); });
+  $('pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('btnPin').click(); });
+  async function choose(name) {
+    msg('');
+    try {
+      var d = await post({ action: 'chooseName', ticket: S.ticket, name: name });
+      S.ticket = '';
+      store(TOKEN_KEY, d.token);
+      S.date = jstToday();
+      await refresh();
+    } catch (e) { msg(e.message); show('vLogin'); }
+  }
+  $('logout').addEventListener('click', async function (e) {
+    e.preventDefault();
+    try { await authed('logout'); } catch (x) {}
+    store(TOKEN_KEY, null); show('vLogin');
+  });
+
+  // ── 表示 ──
+  async function refresh() {
+    try {
+      S.view = await authed('day', { date: S.date });
+      show('vMain');
+      render();
+    } catch (e) { msg(e.message); }
+  }
+  $('prev').addEventListener('click', function () { S.date = shift(S.date, -1); refresh(); });
+  $('next').addEventListener('click', function () { if (S.date < S.view.today) { S.date = shift(S.date, 1); refresh(); } });
+  $('tabRes').addEventListener('click', function () { S.mode = 'res'; render(); });
+  $('tabItem').addEventListener('click', function () { S.mode = 'item'; render(); });
+  $('tabCheck').addEventListener('click', function () { S.mode = 'check'; render(); });
+  $('tabAdmin').addEventListener('click', function () { S.mode = 'admin'; loadAdmin(); });
+
+  function recsOf(rid) { return S.view.records.filter(function (r) { return r.residentId === rid && r.type === '記録'; }); }
+  function has(rid, item) { return recsOf(rid).some(function (r) { return r.item === item; }); }
+
+  function render() {
+    var v = S.view;
+    $('me').textContent = v.me + (v.admin ? '（管理者）' : '') + ' さん';
+    $('dateLabel').textContent = dateJa(v.date) + (v.date === v.today ? ' 今日' : '');
+    $('next').disabled = v.date >= v.today;
+    $('closed').classList.toggle('hidden', !v.closed);
+    $('tabRes').classList.toggle('on', S.mode === 'res');
+    $('tabItem').classList.toggle('on', S.mode === 'item');
+    $('pRes').classList.toggle('hidden', S.mode !== 'res');
+    $('pItem').classList.toggle('hidden', S.mode !== 'item');
+    $('tabCheck').classList.toggle('on', S.mode === 'check');
+    $('pCheck').classList.toggle('hidden', S.mode !== 'check');
+    $('tabAdmin').classList.toggle('hidden', !v.admin);
+    $('tabAdmin').classList.toggle('on', S.mode === 'admin');
+    $('pAdmin').classList.toggle('hidden', S.mode !== 'admin');
+    // 管理は月単位なので、日付の行と締めの帯は出さない
+    $('dayBar').classList.toggle('hidden', S.mode === 'admin');
+    if (S.mode === 'admin') $('closed').classList.add('hidden');
+    if (S.mode === 'res') renderRes(); else if (S.mode === 'item') renderItem(); else if (S.mode === 'check') renderCheck(); else renderAdmin();
+  }
+
+  function tags(r) {
+    var out = [];
+    if (r.away) out.push(el('span', { cls: 'tag away', text: '入院・外泊' }));
+    [['洗濯', '🧺洗濯'], ['ソープ代', '🛁入浴']].forEach(function (p) {
+      if (!r.due[p[0]]) return;
+      var none = S.view.records.some(function (x) { return x.residentId === r.id && x.item === p[0] && x.type === 'なし'; });
+      var done = has(r.id, p[0]);
+      out.push(el('span', { cls: 'tag ' + (done || none ? 'done' : 'due'), text: p[1] + (done ? '✓' : none ? ' 無し' : '') }));
+    });
+    var n = recsOf(r.id).length;
+    if (n) out.push(el('span', { cls: 'tag', text: n + '件' }));
+    return out;
+  }
+
+  function renderRes() {
+    var box = $('pRes'); clear(box);
+    if (!S.view.residents.length) box.appendChild(el('div', { cls: 'muted', text: 'この日に在籍している入居者がいません' }));
+    S.view.residents.forEach(function (r) {
+      box.appendChild(el('div', { cls: 'res', onclick: function () { openRes(r.id); } },
+        [el('span', { cls: 'rm', text: r.room }), el('span', { cls: 'nm', text: r.name })].concat(tags(r))));
+    });
+  }
+
+  // ── 人から：入居者ごとの記録シート ──
+  function openRes(rid) {
+    var r = S.view.residents.filter(function (x) { return x.id === rid; })[0];
+    if (!r) return;
+    var sh = $('sheet'); clear(sh);
+    sh.appendChild(el('h2', { text: r.room + ' ' + r.name + ' さん' }));
+    if (r.away) sh.appendChild(el('div', { cls: 'banner', text: '入院・外泊中です' }));
+    var dis = S.view.closed;
+    var grid = el('div', { cls: 'grid' });
+    SIMPLE.forEach(function (item) {
+      var label = LABEL[item] + (item === '洗濯' && r.laundryType ? '（' + r.laundryType + '）' : '');
+      var b = el('button', { text: label, onclick: function () { send([{ residentId: rid, item: item }], b); } });
+      b.disabled = dis;
+      grid.appendChild(b);
+    });
+    sh.appendChild(grid);
+
+    sh.appendChild(el('div', { cls: 'sect', text: '乾燥機' }));
+    var mins = el('select');
+    for (var m = 10; m <= 180; m += 10) mins.appendChild(el('option', { value: String(m), text: m + '分（' + m * 10 + '円）' }));
+    var bd = el('button', { text: '記録', onclick: function () { send([{ residentId: rid, item: '乾燥機', qty: Number(mins.value) }], bd); } });
+    bd.disabled = dis;
+    sh.appendChild(el('div', { cls: 'row' }, [mins, bd]));
+
+    if (r.mealProvided) {
+      sh.appendChild(el('div', { cls: 'sect', text: '欠食（食べなかった食事）' }));
+      var meals = el('div', { cls: 'meals' });
+      ['朝', '昼', '夕'].forEach(function (m) {
+        var item = '欠食_' + m;
+        var on = has(rid, item);
+        var b = el('button', { cls: on ? 'on' : '', text: m + (on ? ' ✓' : ''), onclick: function () { if (!on) send([{ residentId: rid, item: item }], b); } });
+        b.disabled = dis || on;
+        meals.appendChild(b);
+      });
+      sh.appendChild(meals);
+    }
+
+    if (S.view.goods.length) {
+      sh.appendChild(el('div', { cls: 'sect', text: '備品（施設から渡したもの）' }));
+      var gs = el('select');
+      S.view.goods.forEach(function (g) { gs.appendChild(el('option', { value: g.key, text: g.name })); });
+      var q = el('input', { type: 'number', min: '1', max: '20', value: '1', inputmode: 'numeric' });
+      var bg = el('button', { text: '記録', onclick: function () { send([{ residentId: rid, item: '品目:' + gs.value, qty: Number(q.value) }], bg); } });
+      bg.disabled = dis;
+      sh.appendChild(el('div', { cls: 'row' }, [gs, q, bg]));
+    }
+
+    sh.appendChild(el('div', { cls: 'sect', text: 'この日の記録' }));
+    var recs = recsOf(rid);
+    if (!recs.length) sh.appendChild(el('div', { cls: 'muted', text: 'まだありません' }));
+    recs.forEach(function (x) {
+      var cancel = x.mine || S.view.admin
+        ? el('button', { text: '取消', onclick: function () { undo(x.id, cancel); } }) : null;
+      if (cancel) cancel.disabled = dis;
+      sh.appendChild(el('div', { cls: 'rec' }, [el('span', { text: itemName(x) + '（' + x.by + '）' }), cancel]));
+    });
+    sh.appendChild(el('button', { cls: 'sub full', text: '閉じる', onclick: closeSheet }));
+    $('ovl').classList.remove('hidden');
+  }
+  function itemName(x) {
+    if (x.item.indexOf('品目:') === 0) {
+      var g = S.view.goods.filter(function (g) { return g.key === x.item.slice(3); })[0];
+      return (g ? g.name : x.item) + ' ×' + x.qty;
+    }
+    if (x.item === '乾燥機') return '乾燥機 ' + x.qty + '分';
+    return (LABEL[x.item] || x.item) + (x.qty > 1 ? ' ×' + x.qty : '');
+  }
+  function closeSheet() { $('ovl').classList.add('hidden'); }
+  $('ovl').addEventListener('click', function (e) { if (e.target === this) closeSheet(); });
+
+  // ── 項目から：まとめて記録 ──
+  BULK.forEach(function (i) { $('bulkItem').appendChild(el('option', { value: i, text: LABEL[i] })); });
+  $('bulkItem').addEventListener('change', renderItem);
+  function renderItem() {
+    var item = $('bulkItem').value;
+    var box = $('bulkList'); clear(box);
+    var list = S.view.residents.filter(function (r) { return !r.away; });
+    var due = list.filter(function (r) { return r.due[item]; });
+    var rest = list.filter(function (r) { return !r.due[item]; });
+    function line(r) {
+      var done = has(r.id, item);
+      var cb = el('input', { type: 'checkbox', value: r.id });
+      if (done) cb.disabled = true;
+      return el('label', { cls: 'chk' + (done ? ' done' : '') },
+        [cb, el('span', { text: r.room + ' ' + r.name + (done ? '（記録済み）' : '') })]);
+    }
+    if (due.length) { box.appendChild(el('div', { cls: 'sect', text: '今日が予定日の人' })); due.forEach(function (r) { box.appendChild(line(r)); }); }
+    if (rest.length) { box.appendChild(el('div', { cls: 'sect', text: '予定外の人' })); rest.forEach(function (r) { box.appendChild(line(r)); }); }
+    $('bulkGo').disabled = S.view.closed;
+  }
+  $('bulkGo').addEventListener('click', function () {
+    var item = $('bulkItem').value;
+    var ids = Array.prototype.map.call($('bulkList').querySelectorAll('input:checked'), function (c) { return c.value; });
+    if (!ids.length) { msg('記録する人にチェックを入れてください'); return; }
+    send(ids.map(function (id) { return { residentId: id, item: item }; }), this);
+  });
+
+  // ── 送信 ──
+  // GAS は1往復に数秒かかる。押した瞬間に「記録中…」を出し、他のボタンも止めて二度押しを防ぐ。
+  // 記録・取消の応答には最新の一覧(view)が入っているので、再読込でもう1往復しない。
+  var sending = false;
+  function lockAll(on) {
+    sending = on;
+    document.querySelectorAll('#sheet button, #pItem button, #pCheck button, #pCheck select, #pCheck input, #pAdmin button, #pAdmin select, #pAdmin input').forEach(function (b) { if (on) { b.dataset.was = b.disabled ? '1' : ''; b.disabled = true; } else if (b.dataset.was !== undefined) { b.disabled = b.dataset.was === '1'; } });
+  }
+  function apply(view, reopen) {
+    S.view = view;
+    render();
+    if (reopen) openRes(reopen);
+  }
+  async function send(entries, btn, force) {
+    if (sending) return;
+    var reopen = !$('ovl').classList.contains('hidden') ? entries[0].residentId : '';
+    lockAll(true); msg('記録中…', 'wait');
+    try {
+      var d = await authed('add', { date: S.date, entries: entries, force: !!force });
+      if (d.needConfirm) {
+        lockAll(false); msg('');
+        var lines = d.duplicates.map(function (x) { return '・' + x.name + ' さん ' + (LABEL[x.item] || x.item) + '（' + x.by + ' さんが記録済み）'; });
+        if (window.confirm('すでに記録があります。もう1回分として記録しますか？\n' + lines.join('\n'))) return send(entries, btn, true);
+        return;
+      }
+      lockAll(false);
+      apply(d.view, reopen);
+      msg(d.added + '件 記録しました', 'ok');
+    } catch (e) { lockAll(false); msg(e.message); }
+  }
+  async function undo(id, btn) {
+    if (sending || !window.confirm('この記録を取り消しますか？')) return;
+    var rid = (S.view.records.filter(function (r) { return r.id === id; })[0] || {}).residentId;
+    lockAll(true); msg('取り消し中…', 'wait');
+    try {
+      var d = await authed('cancel', { recordId: id });
+      lockAll(false);
+      apply(d.view, rid);
+      msg('取り消しました', 'ok');
+    } catch (e) { lockAll(false); msg(e.message); }
+  }
+
+  // 記録以外の操作（今日は無し・入院外泊・確認完了）。応答の view で描き直す（1往復）。
+  async function act(action, extra, waitText, okText) {
+    if (sending) return;
+    lockAll(true); msg(waitText, 'wait');
+    try {
+      var d = await authed(action, extra);
+      lockAll(false);
+      apply(d.view);
+      msg(okText, 'ok');
+    } catch (e) { lockAll(false); msg(e.message); }
+  }
+
+  // ── 確認：日勤リーダーの夕方確認 ──
+  var REASONS = ['拒否', '入院・外泊', '予定変更', 'その他'];
+  var MEAL3 = ['朝', '昼', '夕'];
+  function selectOf(values, selected, labels) {
+    var s = el('select');
+    values.forEach(function (v, i) {
+      var o = el('option', { value: v, text: labels ? labels[i] : v });
+      if (v === selected) o.selected = true;
+      s.appendChild(o);
+    });
+    return s;
+  }
+  function dateInput(v) { return el('input', { type: 'date', cls: 'dt', value: v, max: shift(S.view.today, 31) }); }
+  function md(d) { var t = new Date(d + 'T00:00:00Z'); return (t.getUTCMonth() + 1) + '/' + t.getUTCDate(); }
+
+  function renderCheck() {
+    var v = S.view, c = v.check, box = $('pCheck');
+    clear(box);
+    if (c.unconfirmed.length) {
+      var jumps = el('div', { cls: 'jumps' });
+      c.unconfirmed.forEach(function (d) {
+        jumps.appendChild(el('button', { cls: 'sub', text: md(d), onclick: function () { S.date = d; refresh(); } }));
+      });
+      box.appendChild(el('div', { cls: 'banner' }, [el('div', { text: '⚠ まだ確認されていない日があります' }), jumps]));
+    }
+
+    box.appendChild(el('div', { cls: 'sect', text: '予定があるのに記録なし（' + c.missing.length + '件）' }));
+    if (!c.missing.length) box.appendChild(el('div', { cls: 'muted', text: '漏れはありません' }));
+    c.missing.forEach(function (m) {
+      var reason = selectOf(REASONS);
+      var rec = el('button', { text: '記録する', onclick: function () { send([{ residentId: m.residentId, item: m.item }], rec); } });
+      var none = el('button', { cls: 'sub', text: '今日は無し', onclick: function () {
+        act('none', { date: S.date, residentId: m.residentId, item: m.item, reason: reason.value }, '記録中…', '「今日は無し」にしました');
+      } });
+      rec.disabled = none.disabled = v.closed;
+      box.appendChild(el('div', { cls: 'miss' }, [
+        el('div', { cls: 'mhead', text: m.room + ' ' + m.name + '　' + (m.item === '洗濯' ? '🧺洗濯' : '🛁ソープ代') }),
+        el('div', { cls: 'row' }, [rec, reason, none]),
+      ]));
+    });
+
+    box.appendChild(el('div', { cls: 'sect', text: '入院・外泊中（' + c.away.length + '名）' }));
+    if (!c.away.length) box.appendChild(el('div', { cls: 'muted', text: 'いません' }));
+    c.away.forEach(function (a) {
+      var kids = [el('div', { cls: 'mhead', text: a.room + ' ' + a.name + '　' + a.kind + ' ' + md(a.startDate) + a.startMeal + '〜' + (a.endDate ? md(a.endDate) : '') })];
+      if (!a.endDate) {
+        var d = dateInput(S.date), meal = selectOf(MEAL3, '昼');
+        var b = el('button', { text: '戻った', onclick: function () {
+          act('stayEnd', { date: S.date, residentId: a.residentId, endDate: d.value, endMeal: meal.value }, '登録中…', '戻った日を登録しました');
+        } });
+        kids.push(el('div', { cls: 'hint', text: '戻った日と、戻って最初に食べた食事' }));
+        kids.push(el('div', { cls: 'row' }, [d, meal, b]));
+      }
+      box.appendChild(el('div', { cls: 'miss' }, kids));
+    });
+
+    var here = v.residents.filter(function (r) { return !r.away; });
+    if (here.length) {
+      var who = selectOf(here.map(function (r) { return r.id; }), '', here.map(function (r) { return r.room + ' ' + r.name; }));
+      var kind = selectOf(['入院', '外泊']);
+      var sd = dateInput(S.date), sm = selectOf(MEAL3, '朝');
+      var add = el('button', { text: '登録', onclick: function () {
+        act('stayStart', { date: S.date, residentId: who.value, kind: kind.value, startDate: sd.value, startMeal: sm.value }, '登録中…', '入院・外泊を登録しました');
+      } });
+      box.appendChild(el('div', { cls: 'hint', text: '入院・外泊を登録する（開始日と、最初に食べない食事）。期間中は欠食が自動で数えられます' }));
+      box.appendChild(el('div', { cls: 'row' }, [who, kind]));
+      box.appendChild(el('div', { cls: 'row' }, [sd, sm, add]));
+    }
+
+    var recs = v.records.filter(function (r) { return r.type !== '取消'; });
+    var byId = {};
+    v.residents.forEach(function (r) { byId[r.id] = r; });
+    var det = el('details', {}, [el('summary', { text: 'この日の記録（' + recs.length + '件）' })]);
+    recs.forEach(function (x) {
+      var r = byId[x.residentId];
+      var what = x.type === 'なし' ? (LABEL[x.item] || x.item) + ' 今日は無し' : itemName(x);
+      det.appendChild(el('div', { cls: 'rec' }, [el('span', { text: (r ? r.room + ' ' + r.name + '　' : '') + what + '（' + x.by + '）' })]));
+    });
+    box.appendChild(det);
+
+    if (c.confirmedBy) {
+      box.appendChild(el('div', { cls: 'okbox', text: '✓ 確認済み：' + c.confirmedBy.by + ' さん ' + String(c.confirmedBy.at).slice(11, 16) }));
+    } else {
+      box.appendChild(el('button', { cls: 'full', text: '確認完了', onclick: function () {
+        if (c.missing.length && !window.confirm('漏れが' + c.missing.length + '件残っています。確認完了にしますか？')) return;
+        act('confirm', { date: S.date }, '記録中…', '確認完了にしました');
+      } }));
+    }
+  }
+
+  // ── 管理（管理者PINでログインしたときだけ）：おむつ発注・発注書・集計・締め ──
+  // 設定（入居者・単価・スタッフ・調整）はスプレッドシートを直接編集する。ここは月の仕事だけ。
+  function ymShift(ym, n) {
+    var y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)) - 1 + n;
+    y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+    return y + '-' + (m < 9 ? '0' : '') + (m + 1);
+  }
+  function ymJa(ym) { return Number(ym.slice(0, 4)) + '年' + Number(ym.slice(5, 7)) + '月'; }
+  function yen(n) { return Number(n || 0).toLocaleString('ja-JP') + '円'; }
+  async function loadAdmin() {
+    if (!S.ym) S.ym = jstToday().slice(0, 7);
+    render();
+    msg('読み込み中…', 'wait');
+    try {
+      S.adm = await authed('admin', { ym: S.ym });
+      msg('');
+      render();
+    } catch (e) { msg(e.message); }
+  }
+  async function adminAct(action, extra, waitText, okText) {
+    if (sending) return null;
+    lockAll(true); msg(waitText, 'wait');
+    try {
+      var d = await authed(action, Object.assign({ ym: S.ym }, extra || {}));
+      lockAll(false);
+      S.adm = d.admin;
+      var text = typeof okText === 'function' ? okText(d) : okText;   // 集計結果(S.agg)を先に覚えてから描く
+      render();
+      msg(text, 'ok');
+      return d;
+    } catch (e) { lockAll(false); msg(e.message); return null; }
+  }
+
+  function renderAdmin() {
+    var box = $('pAdmin'); clear(box);
+    var a = S.adm && S.adm.ym === S.ym ? S.adm : null;
+    var bar = el('div', { cls: 'bar' }, [
+      el('button', { cls: 'sub', text: '◀', onclick: function () { S.ym = ymShift(S.ym, -1); S.agg = null; loadAdmin(); } }),
+      el('div', { cls: 'date', text: ymJa(S.ym) }),
+      el('button', { cls: 'sub', text: '▶', onclick: function () { S.ym = ymShift(S.ym, 1); S.agg = null; loadAdmin(); } }),
+    ]);
+    box.appendChild(bar);
+    if (!a) return;
+    if (a.closed) box.appendChild(el('div', { cls: 'banner', text: ymJa(a.ym) + 'は締め済みです（記録・おむつ・集計は変えられません）', style: 'margin-top:10px' }));
+
+    // おむつ発注（中旬）
+    box.appendChild(el('div', { cls: 'sect', text: 'おむつ発注' }));
+    if (!S.admRes || !a.residents.some(function (r) { return r.id === S.admRes; })) S.admRes = a.residents.length ? a.residents[0].id : '';
+    var who = el('select', { onchange: function () { S.admRes = this.value; renderAdmin(); } });
+    a.residents.forEach(function (r) {
+      var n = Object.keys(a.omutsu[r.id] || {}).length;
+      var o = el('option', { value: r.id, text: r.room + ' ' + r.name + (n ? '（' + n + '品目）' : '') });
+      if (r.id === S.admRes) o.selected = true;
+      who.appendChild(o);
+    });
+    box.appendChild(who);
+    var cur = a.omutsu[S.admRes] || {};
+    var inputs = [];
+    var totalEl = el('b');
+    function recalc() {
+      var t = inputs.reduce(function (s, x) { return s + (Number(x.inp.value) || 0) * x.g.price; }, 0);
+      totalEl.textContent = yen(t);
+    }
+    var list = el('div', { style: 'margin-top:6px' });
+    a.goods.forEach(function (g) {
+      var inp = el('input', { type: 'number', inputmode: 'numeric', min: '0', max: '99', value: String(cur[g.key] || 0), oninput: recalc });
+      if (a.closed) inp.disabled = true;
+      inputs.push({ g: g, inp: inp });
+      list.appendChild(el('div', { cls: 'gd' }, [
+        el('span', { cls: 'gn', text: g.name }),
+        el('span', { cls: 'gp', text: yen(g.price) + (g.perPack ? '・' + g.perPack : '') }),
+        inp,
+      ]));
+    });
+    box.appendChild(list);
+    box.appendChild(el('div', { cls: 'sum' }, [el('span', { text: 'この人の合計' }), totalEl]));
+    recalc();
+    if (!a.closed) {
+      box.appendChild(el('button', { cls: 'full', text: '保存', onclick: function () {
+        var bad = inputs.filter(function (x) { var q = Number(x.inp.value); return !(q >= 0 && q <= 99 && Math.floor(q) === q); });
+        if (bad.length) { msg(bad[0].g.name + ' の袋数は0〜99の整数で入れてください'); return; }
+        adminAct('omutsuSave', { residentId: S.admRes, items: inputs.map(function (x) { return { key: x.g.key, qty: Number(x.inp.value) }; }) },
+          '保存中…', function (d) { return d.saved ? d.saved + '品目を保存しました' : '変更はありませんでした'; });
+      } }));
+    }
+    box.appendChild(el('button', { cls: 'full sub', text: '発注書を作る', onclick: function () {
+      adminAct('order', {}, '発注書を作っています…', function (d) { return '「発注書 ' + S.ym + '」タブを作りました（合計 ' + yen(d.total) + '）'; });
+    } }));
+    if (a.tabs.order) box.appendChild(el('div', { cls: 'hint', text: '「発注書 ' + a.ym + '」タブがあります。作り直すと最新の袋数で上書きします。' }));
+
+    // 集計
+    box.appendChild(el('div', { cls: 'sect', text: '月の集計' }));
+    if (!a.closed) {
+      box.appendChild(el('button', { cls: 'full', text: '集計する', onclick: function () {
+        adminAct('aggregate', {}, '集計しています…', function (d) { S.agg = { ym: S.ym, d: d }; return '「' + S.ym + '」と「' + S.ym + ' 内訳」タブを作りました'; });
+      } }));
+    }
+    var g = S.agg && S.agg.ym === a.ym ? S.agg.d : null;
+    if (g) {
+      [['有料サービス', '小計'], ['家賃・共益費・生活支援', '固定費計'], ['合計（' + g.count + '名）', '合計']].forEach(function (p) {
+        box.appendChild(el('div', { cls: 'sum' }, [el('span', { text: p[0] }), el('b', { text: yen(g.totals[p[1]]) })]));
+      });
+      if (g.warnings.length) {
+        box.appendChild(el('div', { cls: 'hint', text: '確認してください（' + g.warnings.length + '件）' }));
+        g.warnings.forEach(function (w) { box.appendChild(el('div', { cls: 'warn', text: (w.name ? w.name + '：' : '') + w.message })); });
+      }
+    } else if (a.tabs.month) {
+      box.appendChild(el('div', { cls: 'hint', text: '「' + a.ym + '」タブがあります。' + (a.closed ? '締め済みなのでこのまま残ります。' : '集計し直すと最新の記録で作り直します。') }));
+    }
+
+    // 締め
+    box.appendChild(el('div', { cls: 'sect', text: '締め' }));
+    if (a.closed) {
+      box.appendChild(el('div', { cls: 'hint', text: a.tabs.archive ? 'この月の記録は「記録 ' + a.ym + '」タブへ移してあります。' : '締め済みです。' }));
+    } else if (a.today.slice(0, 7) <= a.ym) {
+      box.appendChild(el('div', { cls: 'hint', text: ymJa(a.ym) + 'が終わってから締められます。' }));
+    } else {
+      box.appendChild(el('div', { cls: 'hint', text: '締めると、この月の記録・おむつ・集計は変えられなくなります。記録は「記録 ' + a.ym + '」タブへ移します（解除はスプレッドシートの「締め」の行を消す）。' }));
+      box.appendChild(el('button', { cls: 'full', text: ymJa(a.ym) + 'を締める', onclick: function () {
+        if (!window.confirm(ymJa(a.ym) + 'を締めます。よろしいですか？\n締める前に集計を作り直します。')) return;
+        adminAct('close', {}, '締めています…', function (d) { S.agg = d.totals ? { ym: S.ym, d: d } : S.agg; return ymJa(S.ym) + 'を締めました（記録 ' + d.archived + '件を移しました）'; });
+      } }));
+    }
+    box.appendChild(el('div', { cls: 'hint', style: 'margin-top:16px', text: '入居者・単価・スタッフ・調整は、スプレッドシートで直接直してください。' }));
+  }
+
+  // ── 起動 ──
+  if (load(TOKEN_KEY)) { S.date = jstToday(); refresh(); } else show('vLogin');
+})();
+</script>
+</body>
+</html>
