@@ -93,6 +93,12 @@
   #helpOvl{z-index:15;}
   #helpOvl dt{font-size:12px;font-weight:700;color:var(--pri);margin-top:14px;}
   #helpOvl dd{margin:4px 0 0;font-size:15px;line-height:1.7;white-space:pre-line;}
+  /* 押した手ごたえ：押している間は少し沈んで暗くなる。押した直後は緑で「✓」を1秒出す（その間は押せない） */
+  button,.res,.chk{-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+  button{transition:transform .07s ease,filter .07s ease,background-color .15s ease;}
+  button:active:not(:disabled){transform:scale(.95);filter:brightness(.85);}
+  .res:active,.chk:active{background:var(--pri-weak);}
+  button.flash,button.flash:disabled{transition:none;background:#1e8e3e !important;color:#fff !important;opacity:1;transform:scale(1.02);}
   #asName{font-size:13px;}
   #asName a{color:var(--pri);}
   #qbar{margin-bottom:8px;}
@@ -138,7 +144,7 @@
       <div class="usage"><button type="button" data-help="item">？ この画面の使い方</button></div>
       <select id="bulkItem"></select>
       <div id="bulkList"></div>
-      <button id="bulkGo" class="full">まとめて記録</button>
+      <button id="bulkGo" class="full" data-k="bulk">まとめて記録</button>
     </div>
     <div id="pCheck" class="card hidden"></div>
     <div id="pAdmin" class="card hidden"></div>
@@ -504,6 +510,7 @@
     $('dayBar').classList.toggle('hidden', S.mode === 'admin');
     if (S.mode === 'admin') $('closed').classList.add('hidden');
     if (S.mode === 'res') renderRes(); else if (S.mode === 'item') renderItem(); else if (S.mode === 'check') renderCheck(); else renderAdmin();
+    flashOn();
   }
 
   function tags(r) {
@@ -542,7 +549,7 @@
     var grid = el('div', { cls: 'grid' });
     SIMPLE.forEach(function (item) {
       var label = LABEL[item] + (item === '洗濯' && r.laundryType ? '（' + r.laundryType + '）' : '');
-      var b = el('button', { text: label, onclick: function () { send([{ residentId: rid, item: item }], b); } });
+      var b = el('button', { text: label, 'data-k': rid + '|' + item, onclick: function () { send([{ residentId: rid, item: item }], b); } });
       b.disabled = dis;
       grid.appendChild(el('div', { cls: 'cell' }, [b, hb(item)]));
     });
@@ -551,7 +558,7 @@
     sh.appendChild(sectH('乾燥機', '乾燥機'));
     var mins = el('select');
     for (var m = 10; m <= 180; m += 10) mins.appendChild(el('option', { value: String(m), text: m + '分（' + m * 10 + '円）' }));
-    var bd = el('button', { text: '記録', onclick: function () { send([{ residentId: rid, item: '乾燥機', qty: Number(mins.value) }], bd); } });
+    var bd = el('button', { text: '記録', 'data-k': rid + '|乾燥機', onclick: function () { send([{ residentId: rid, item: '乾燥機', qty: Number(mins.value) }], bd); } });
     bd.disabled = dis;
     sh.appendChild(el('div', { cls: 'row' }, [mins, bd]));
 
@@ -561,7 +568,7 @@
       ['朝', '昼', '夕'].forEach(function (m) {
         var item = '欠食_' + m;
         var on = has(rid, item);
-        var b = el('button', { cls: on ? 'on' : '', text: m + (on ? ' ✓' : ''), onclick: function () { if (!on) send([{ residentId: rid, item: item }], b); } });
+        var b = el('button', { cls: on ? 'on' : '', text: m + (on ? ' ✓' : ''), 'data-k': rid + '|' + item, onclick: function () { if (!on) send([{ residentId: rid, item: item }], b); } });
         b.disabled = dis || on;
         meals.appendChild(b);
       });
@@ -573,7 +580,7 @@
       var gs = el('select');
       S.view.goods.forEach(function (g) { gs.appendChild(el('option', { value: g.key, text: g.name })); });
       var q = el('input', { type: 'number', min: '1', max: '20', value: '1', inputmode: 'numeric' });
-      var bg = el('button', { text: '記録', onclick: function () { send([{ residentId: rid, item: '品目:' + gs.value, qty: Number(q.value) }], bg); } });
+      var bg = el('button', { text: '記録', 'data-k': rid + '|備品', onclick: function () { send([{ residentId: rid, item: '品目:' + gs.value, qty: Number(q.value) }], bg); } });
       bg.disabled = dis;
       sh.appendChild(el('div', { cls: 'row' }, [gs, q, bg]));
     }
@@ -736,6 +743,7 @@
       if (c && !c.disabled) c.checked = true;
     });
     if (sheetRid) { openRes(sheetRid); $('sheet').scrollTop = top; }
+    flashOn();
   }
 
   function resName(id) {
@@ -784,9 +792,34 @@
   }
 
   // 記録：重複は端末で分かる範囲で先に確かめ、すぐ画面に出して、送るのは裏で
-  function send(entries) {
+  // 押した手ごたえ。記録すると画面を描き直すので、押したボタンは印(data-k)で探し直して緑にする。
+  // 緑の間（FLASH_MS）は押せないので、反応が速すぎて「押せたか分からず二度押し」を防ぐ。
+  var FLASH_MS = 1000;
+  function buzz() { try { if (navigator.vibrate) navigator.vibrate(30); } catch (e) {} }
+  function flashOn() {
+    if (!S.flash || Date.now() > S.flash.until) return;
+    document.querySelectorAll('[data-k="' + S.flash.key.replace(/"/g, '') + '"]').forEach(function (b) {
+      b.classList.add('flash'); b.disabled = true; b.textContent = S.flash.text;
+    });
+  }
+  function flash(btn, text) {
+    buzz();
+    var key = btn && btn.getAttribute ? btn.getAttribute('data-k') : '';
+    if (!key) return;
+    S.flash = { key: key, text: text, until: Date.now() + FLASH_MS };
+    flashOn();
+    setTimeout(function () {
+      if (!S.flash || S.flash.key !== key) return;
+      S.flash = null;
+      if (key === 'bulk') { var g = $('bulkGo'); g.classList.remove('flash'); g.textContent = 'まとめて記録'; g.disabled = !!(S.view && S.view.closed); return; }
+      rerender();
+    }, FLASH_MS);
+  }
+
+  function send(entries, btn) {
     var v = S.view;
     if (!v || v.closed) return;
+    if (S.flash && Date.now() < S.flash.until) return;   // 押した直後の二度押しは受けない
     var dups = [];
     entries.forEach(function (e) {
       v.records.forEach(function (r) {
@@ -800,6 +833,8 @@
              entries: entries.map(function (e) { var x = { residentId: e.residentId, item: e.item }; if (e.qty != null) x.qty = e.qty; return x; }) });
     saveQ();
     rerender();
+    var narrow = btn && btn.closest && btn.closest('.meals, .row');   // 欠食・乾燥機・備品のボタンは幅が狭い
+    flash(btn, narrow ? '✓' : entries.length > 1 ? '✓ ' + entries.length + '件 記録しました' : '✓ 記録しました');
     msg(entries.length + '件 記録しました', 'ok');
     pump();
   }
@@ -821,6 +856,7 @@
       saveQ();
     }
     rerender();
+    buzz();
     msg('取り消しました', 'ok');
     pump();
   }
@@ -833,6 +869,7 @@
       var d = await authed(action, extra);
       lockAll(false);
       apply(d.view);
+      buzz();
       msg(okText, 'ok');
     } catch (e) { lockAll(false); msg(e.message); }
   }
@@ -960,6 +997,7 @@
       S.adm = d.admin;
       var text = typeof okText === 'function' ? okText(d) : okText;   // 集計結果(S.agg)を先に覚えてから描く
       render();
+      buzz();
       msg(text, 'ok');
       return d;
     } catch (e) { lockAll(false); msg(e.message); return null; }
