@@ -91,6 +91,11 @@
   .usage{text-align:right;margin:-4px 0 4px;}
   .usage button{background:none;color:var(--pri);font-size:13px;padding:4px 0;}
   #helpOvl{z-index:15;}
+  #askOvl{z-index:25;align-items:center;padding:16px;}
+  #askOvl .sheet{border-radius:16px;}
+  #askText{font-size:16px;line-height:1.7;white-space:pre-line;}
+  .askBtns{display:flex;gap:10px;margin-top:18px;}
+  .askBtns button{flex:1;padding:14px 8px;}
   #helpOvl dt{font-size:12px;font-weight:700;color:var(--pri);margin-top:14px;}
   #helpOvl dd{margin:4px 0 0;font-size:15px;line-height:1.7;white-space:pre-line;}
   /* 押した手ごたえ：押している間は少し沈んで暗くなる。押した直後は緑で「✓」を1秒出す（その間は押せない） */
@@ -156,6 +161,11 @@
   <h2 id="helpTitle"></h2>
   <dl id="helpBody"></dl>
   <button id="helpClose" class="sub full">閉じる</button>
+</div></div>
+<!-- 確認（はい／いいえ）。ブラウザ標準の confirm は LINE 等のアプリ内ブラウザで出ずに「キャンセル」扱いになることがあるので使わない -->
+<div id="askOvl" class="ovl hidden"><div class="sheet">
+  <div id="askText"></div>
+  <div class="askBtns"><button id="askNo" class="sub"></button><button id="askOk"></button></div>
 </div></div>
 
 <script>
@@ -415,6 +425,21 @@
     $('helpOvl').classList.remove('hidden');
   }
   function closeHelp() { $('helpOvl').classList.add('hidden'); }
+
+  // はい／いいえ の確認。押した方を Promise で返す（外側を押したら「いいえ」）。
+  function ask(text, okLabel, noLabel) {
+    return new Promise(function (resolve) {
+      var o = $('askOvl');
+      $('askText').textContent = text;
+      $('askOk').textContent = okLabel || 'はい';
+      $('askNo').textContent = noLabel || 'やめる';
+      function done(v) { o.classList.add('hidden'); o.onclick = null; $('askOk').onclick = null; $('askNo').onclick = null; resolve(v); }
+      $('askOk').onclick = function () { done(true); };
+      $('askNo').onclick = function () { done(false); };
+      o.onclick = function (e) { if (e.target === o) done(false); };
+      o.classList.remove('hidden');
+    });
+  }
   $('helpClose').addEventListener('click', closeHelp);
   $('helpOvl').addEventListener('click', function (e) { if (e.target === this) closeHelp(); });
   // HTML に直接書いた「？」（ログイン・日付・項目から）は data-help で受ける
@@ -466,7 +491,7 @@
   $('logout').addEventListener('click', async function (e) {
     e.preventDefault();
     var w = myQ().length;
-    if (w && !window.confirm('送信待ち・確認が必要な記録が' + w + '件あります。\nログアウトしてもこの端末に残り、次に同じ名前で入ると送ります。ログアウトしますか？')) return;
+    if (w && !(await ask('送信待ち・確認が必要な記録が' + w + '件あります。\nログアウトしてもこの端末に残り、次に同じ名前で入ると送ります。', 'ログアウトする', 'やめる'))) return;
     try { await authed('logout'); } catch (x) {}
     store(TOKEN_KEY, null); show('vLogin');
   });
@@ -776,7 +801,7 @@
         box.appendChild(el('div', { cls: 'warn', text: o.error || '送れませんでした' }));
         box.appendChild(el('div', { cls: 'row' }, [
           el('button', { text: 'もう一度送る', onclick: function () { o.state = 'wait'; o.error = ''; saveQ(); closeSheet(); rerender(); pump(); } }),
-          el('button', { cls: 'sub', text: '消す', onclick: function () { if (window.confirm('この記録を消しますか？（送られません）')) { dropQ(o); closeSheet(); rerender(); } } }),
+          el('button', { cls: 'sub', text: '消す', onclick: async function () { if (await ask('この記録を消しますか？（シートには送られません）', '消す', 'やめる')) { dropQ(o); closeSheet(); rerender(); } } }),
         ]));
       }
       sh.appendChild(box);
@@ -816,7 +841,7 @@
     }, FLASH_MS);
   }
 
-  function send(entries, btn) {
+  async function send(entries, btn) {
     var v = S.view;
     if (!v || v.closed) return;
     if (S.flash && Date.now() < S.flash.until) return;   // 押した直後の二度押しは受けない
@@ -828,7 +853,7 @@
         }
       });
     });
-    if (dups.length && !window.confirm('すでに記録があります。もう1回分として記録しますか？\n' + dups.join('\n'))) return;
+    if (dups.length && !(await ask('すでに記録があります。\n' + dups.join('\n') + '\n\nもう1回分として記録しますか？', '記録する', 'やめる'))) return;
     Q.push({ rid: newRequestId(), kind: 'add', me: v.me, date: v.date, force: dups.length > 0, state: 'wait', at: Date.now(),
              entries: entries.map(function (e) { var x = { residentId: e.residentId, item: e.item }; if (e.qty != null) x.qty = e.qty; return x; }) });
     saveQ();
@@ -840,8 +865,8 @@
   }
 
   // 取消：まだ送っていない記録なら端末の中で消すだけ。送信中のものは送り終わるまで待ってもらう。
-  function undo(id) {
-    if (!window.confirm('この記録を取り消しますか？')) return;
+  async function undo(id) {
+    if (!(await ask('この記録を取り消しますか？', '取り消す', 'やめる'))) return;
     var hit = null;
     myQ().forEach(function (o) {
       if (o.kind !== 'add' || o.state !== 'wait') return;
@@ -960,10 +985,10 @@
     if (c.confirmedBy) {
       box.appendChild(el('div', { cls: 'okbox', text: '✓ 確認済み：' + c.confirmedBy.by + ' さん ' + String(c.confirmedBy.at).slice(11, 16) }));
     } else {
-      box.appendChild(el('button', { cls: 'full', text: '確認完了', onclick: function () {
-        if (c.missing.length && !window.confirm('漏れが' + c.missing.length + '件残っています。確認完了にしますか？')) return;
+      box.appendChild(el('button', { cls: 'full', text: '確認完了', onclick: async function () {
+        if (c.missing.length && !(await ask('漏れが' + c.missing.length + '件残っています。確認完了にしますか？', '確認完了にする', 'やめる'))) return;
         var w = myQ().length;
-        if (w && !window.confirm('あなたの送信待ち・確認が必要な記録が' + w + '件あります。このまま確認完了にしますか？')) return;
+        if (w && !(await ask('あなたの送信待ち・確認が必要な記録が' + w + '件あります。このまま確認完了にしますか？', '確認完了にする', 'やめる'))) return;
         act('confirm', { date: S.date }, '記録中…', '確認完了にしました');
       } }));
     }
@@ -1089,8 +1114,8 @@
       box.appendChild(el('div', { cls: 'hint', text: ymJa(a.ym) + 'が終わってから締められます。' }));
     } else {
       box.appendChild(el('div', { cls: 'hint', text: '締めると、この月の記録・おむつ・集計は変えられなくなります。記録は「記録 ' + a.ym + '」タブへ移します（解除はスプレッドシートの「締め」の行を消す）。' }));
-      box.appendChild(el('button', { cls: 'full', text: ymJa(a.ym) + 'を締める', onclick: function () {
-        if (!window.confirm(ymJa(a.ym) + 'を締めます。よろしいですか？\n締める前に集計を作り直します。')) return;
+      box.appendChild(el('button', { cls: 'full', text: ymJa(a.ym) + 'を締める', onclick: async function () {
+        if (!(await ask(ymJa(a.ym) + 'を締めます。よろしいですか？\n締める前に集計を作り直します。', '締める', 'やめる'))) return;
         adminAct('close', {}, '締めています…', function (d) { S.agg = d.totals ? { ym: S.ym, d: d } : S.agg; return ymJa(S.ym) + 'を締めました（記録 ' + d.archived + '件を移しました）'; });
       } }));
     }
