@@ -335,7 +335,7 @@
     check: { title: '「確認」の使い方（日勤リーダー）', body: [
       ['使う場面', '夕方、その日の記録に漏れがないかを確かめるとき。'],
       ['手順', '① 「予定があるのに記録なし」を上から見る\n② したのに付け忘れ → [記録する]\n③ しなかった → 理由を選んで [今日は無し]\n④ 最後に [確認完了]'],
-      ['わからないこと', '欠食・備品・排泄介助・掃除には予定が無いので、漏れは機械では見つけられません。担当者に声をかけて確かめてください。'] ] },
+      ['わからないこと', '欠食・貸出・排泄介助・掃除には予定が無いので、漏れは機械では見つけられません。担当者に声をかけて確かめてください。'] ] },
     admin: { title: '「管理」の使い方', body: [
       ['中旬', 'おむつの袋数を入居者ごとに入れて [保存] → [発注書を作る]'],
       ['月のはじめ', '[集計する] で前の月の請求の表を作り、注意を見て直す'],
@@ -371,10 +371,10 @@
       ['押すとき', 'その食事を食べなかったとき。食べなかった食事（朝・昼・夕）を押します。食事代から引かれます。'],
       ['押さなくてよいとき', '入院・外泊の期間中は自動で引かれるので押しません（リーダーが「確認」で入院・外泊を登録します）。'],
       ['間違えたとき', '下の「この日の記録」から [取消] できます。'] ] },
-    '備品': { title: '備品', body: [
-      ['記録するとき', 'おしりふき・手袋など、施設の在庫からその人に渡したとき。'],
+    '備品': { title: '貸出（紙の貸出一覧表の代わり）', body: [
+      ['記録するとき', 'おしりふき・パッド・口腔ケア用品などを、その人に渡したとき（紙の貸出一覧表に書いていたもの）。'],
       ['手順', '品目と個数を選んで [記録] を押します。'],
-      ['記録しないもの', '毎月まとめて発注するおむつ（管理者が「管理」で入れる分）は、ここでは記録しません。'] ] },
+      ['請求', 'ここに記録したものは請求しません（誰に何を渡したかを残すだけです）。福祉用具の請求は、管理者が中旬に入れるおむつ発注の分だけです。'] ] },
     '取消': { title: 'この日の記録と取消', body: [
       ['見られるもの', 'この人のこの日の記録と、記録した人の名前。'],
       ['取消', '間違えて押したときは [取消] を押します。取り消せるのは自分が記録したものだけです（管理者は全員分）。'],
@@ -601,7 +601,7 @@
     }
 
     if (S.view.goods.length) {
-      sh.appendChild(sectH('備品（施設から渡したもの）', '備品'));
+      sh.appendChild(sectH('貸出（渡したもの・請求はしません）', '備品'));
       var gs = el('select');
       S.view.goods.forEach(function (g) { gs.appendChild(el('option', { value: g.key, text: g.name })); });
       var q = el('input', { type: 'number', min: '1', max: '20', value: '1', inputmode: 'numeric' });
@@ -625,7 +625,7 @@
   function itemName(x) {
     if (x.item.indexOf('品目:') === 0) {
       var g = S.view.goods.filter(function (g) { return g.key === x.item.slice(3); })[0];
-      return (g ? g.name : x.item) + ' ×' + x.qty;
+      return '貸出 ' + (g ? g.name : x.item) + ' ×' + x.qty;
     }
     if (x.item === '乾燥機') return '乾燥機 ' + x.qty + '分';
     return (LABEL[x.item] || x.item) + (x.qty > 1 ? ' ×' + x.qty : '');
@@ -858,7 +858,7 @@
              entries: entries.map(function (e) { var x = { residentId: e.residentId, item: e.item }; if (e.qty != null) x.qty = e.qty; return x; }) });
     saveQ();
     rerender();
-    var narrow = btn && btn.closest && btn.closest('.meals, .row');   // 欠食・乾燥機・備品のボタンは幅が狭い
+    var narrow = btn && btn.closest && btn.closest('.meals, .row');   // 欠食・乾燥機・貸出のボタンは幅が狭い
     flash(btn, narrow ? '✓' : entries.length > 1 ? '✓ ' + entries.length + '件 記録しました' : '✓ 記録しました');
     msg(entries.length + '件 記録しました', 'ok');
     pump();
