@@ -210,7 +210,7 @@
     if (text) m.appendChild(el('div', { cls: 'msg ' + (kind || 'err'), text: text }));
     if (kind === 'ok') setTimeout(function () { if (m.textContent === text) clear(m); }, 2500);
   }
-  // ログイン状態と前回の名前は localStorage に置く（個人のスマホで使う前提。閉じて開き直しても12時間はPIN不要）。
+  // ログイン状態と前回の名前は localStorage に置く（個人のスマホで使う前提。閉じて開き直しても、最後に使ってから30日はPIN不要）。
   // 以前は sessionStorage で、LINE などから開くたびに消えて PIN→名前 の2往復をやり直していた。
   function store(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
   function load(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
@@ -318,7 +318,7 @@
     name: { title: '名前を選ぶ', body: [
       ['選ぶ名前', '必ず自分の名前を選んでください。記録には選んだ名前が残ります。'],
       ['名前が無いとき', '管理者に伝えてください（スタッフの一覧に足してもらいます）。'],
-      ['ログインの長さ', '一度入ると12時間は、画面を閉じて開き直してもそのまま使えます。'],
+      ['ログインの長さ', '一度入ると、最後に使ってから30日は画面を閉じて開き直してもそのまま使えます（使うたびに延びます）。PINが変わると入り直しです。'],
       ['次から', '選んだ名前はこのスマホが覚えるので、次からはPINだけで入れます。別の人の名前で入るときは、PINの下の「名前を変える」を押してください。'] ] },
     date: { title: '日付', body: [
       ['ふだん', '今日の日付のまま記録します。'],
