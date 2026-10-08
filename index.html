@@ -329,11 +329,12 @@
     res: { title: '「人から」の使い方', body: [
       ['使う場面', '1人の入居者に、いくつかのことをまとめて付けたいとき。'],
       ['手順', '① 入居者の名前を押す\n② 出てきたボタンから、したことを押す\n③ 上に「記録しました」と出れば完了（シートへは裏で送ります。⏳ は送信待ち）'],
-      ['名前の横の印', '🧺洗濯・🛁入浴 … 今日が予定日\n✓ が付いたら記録済み'] ] },
+      ['名前の横の印', '🧺洗濯・🛁入浴 … 今日が予定日\n✓ が付いたら記録済み（✓2 は2回）'] ] },
     item: { title: '「項目から」の使い方', body: [
       ['使う場面', '洗濯やソープ代など、1つのことを何人分もまとめて付けたいとき。'],
       ['手順', '① 上の選択で項目を選ぶ\n② したことのある人にチェックを入れる\n③ [まとめて記録] を押す'],
-      ['並び方', '今日が予定日の人が上、予定外の人が下に並びます。記録済みの人はチェックできません。'] ] },
+      ['並び方', '今日が予定日の人が上、予定外の人が下に並びます。'],
+      ['記録済みの人', '「（記録済み）」と出ます。1日に2回目をしたときは、その人にもチェックを入れて記録します（確かめる画面が出ます）。'] ] },
     check: { title: '「確認」の使い方（日勤リーダー）', body: [
       ['使う場面', '夕方、その日の記録に漏れがないかを確かめるとき。'],
       ['手順', '① 「予定があるのに記録なし」を上から見る\n② したのに付け忘れ → [記録する]\n③ しなかった → 理由を選んで [今日は無し]\n④ 最後に [確認完了]'],
@@ -346,7 +347,7 @@
     '洗濯': { title: '洗濯', body: [
       ['押すとき', 'その人の洗濯物を洗濯機で洗ったとき。1回洗って1回押します。'],
       ['種類', '「洗剤あり」「洗濯のみ」は入居者ごとに決まっているので、選ぶ必要はありません。'],
-      ['1日に2回洗ったとき', 'もう一度押します。「すでに記録があります」と出るので [OK] を押してください。'],
+      ['1日に2回洗ったとき', 'もう一度押します。「今日すでに記録があります」と出るので [記録する] を押してください。名前の横が 🧺洗濯✓2 になります。'],
       ['乾燥機', '乾燥機を使ったときは、下の「乾燥機」で別に分数を記録します。'] ] },
     'ソープ代': { title: 'ソープ代（入浴）', body: [
       ['押すとき', 'その人が入浴したとき。1回の入浴で1回押します。'],
@@ -367,8 +368,8 @@
       ['迷ったら', '押す前にリーダーに確認してください。'] ] },
     '乾燥機': { title: '乾燥機', body: [
       ['記録するとき', 'その人の洗濯物に乾燥機を使ったとき。'],
-      ['手順', '使った時間（10分ごと）を選んで [記録] を押します。料金は10分ごとにかかります。'],
-      ['2回使ったとき', '1回ずつ記録しても、合計の分数で1回記録しても、どちらでもかまいません。'] ] },
+      ['手順', '使った時間を 20分・40分・60分・80分・100分 から選んで [記録] を押します。料金は20分ごとに100円です。'],
+      ['2回使ったとき', '1回ずつ記録します。'] ] },
     '欠食': { title: '欠食（食べなかった食事）', body: [
       ['押すとき', 'その食事を食べなかったとき。食べなかった食事（朝・昼・夕）を押します。食事代から引かれます。'],
       ['押さなくてよいとき', '入院・外泊の期間中は自動で引かれるので押しません（リーダーが「確認」で入院・外泊を登録します）。'],
@@ -516,6 +517,7 @@
 
   function recsOf(rid) { return S.view.records.filter(function (r) { return r.residentId === rid && r.type === '記録'; }); }
   function has(rid, item) { return recsOf(rid).some(function (r) { return r.item === item; }); }
+  function countOf(rid, item) { return recsOf(rid).filter(function (r) { return r.item === item; }).length; }
 
   function render() {
     var v = S.view = derive(S.base);
@@ -546,8 +548,8 @@
     [['洗濯', '🧺洗濯'], ['ソープ代', '🛁入浴']].forEach(function (p) {
       if (!r.due[p[0]]) return;
       var none = S.view.records.some(function (x) { return x.residentId === r.id && x.item === p[0] && x.type === 'なし'; });
-      var done = has(r.id, p[0]);
-      out.push(el('span', { cls: 'tag ' + (done || none ? 'done' : 'due'), text: p[1] + (done ? '✓' : none ? ' 無し' : '') }));
+      var times = countOf(r.id, p[0]);   // 1日2回の洗濯は ✓2
+      out.push(el('span', { cls: 'tag ' + (times || none ? 'done' : 'due'), text: p[1] + (times ? '✓' + (times > 1 ? times : '') : none ? ' 無し' : '') }));
     });
     var n = recsOf(r.id).length;
     if (n) out.push(el('span', { cls: 'tag', text: n + '件' }));
@@ -584,7 +586,8 @@
 
     sh.appendChild(sectH('乾燥機', '乾燥機'));
     var mins = el('select');
-    for (var m = 10; m <= 180; m += 10) mins.appendChild(el('option', { value: String(m), text: m + '分（' + m * 10 + '円）' }));
+    // 2026-10-08 青木さん：20分100円〜100分500円 の5択（Logic.gs DRYER_CHOICES と同じ）
+    [20, 40, 60, 80, 100].forEach(function (m) { mins.appendChild(el('option', { value: String(m), text: m + '分（' + m * 5 + '円）' })); });
     var bd = el('button', { text: '記録', 'data-k': rid + '|乾燥機', onclick: function () { send([{ residentId: rid, item: '乾燥機', qty: Number(mins.value) }], bd); } });
     bd.disabled = dis;
     sh.appendChild(el('div', { cls: 'row' }, [mins, bd]));
@@ -644,12 +647,12 @@
     var list = S.view.residents.filter(function (r) { return !r.away; });
     var due = list.filter(function (r) { return r.due[item]; });
     var rest = list.filter(function (r) { return !r.due[item]; });
+    // 記録済みの人もチェックできる（1日2回の洗濯など）。送る前に send() が回数を見せて確かめる。
     function line(r) {
-      var done = has(r.id, item);
+      var n = countOf(r.id, item);
       var cb = el('input', { type: 'checkbox', value: r.id });
-      if (done) cb.disabled = true;
-      return el('label', { cls: 'chk' + (done ? ' done' : '') },
-        [cb, el('span', { text: r.room + ' ' + r.name + (done ? '（記録済み）' : '') })]);
+      return el('label', { cls: 'chk' + (n ? ' done' : '') },
+        [cb, el('span', { text: r.room + ' ' + r.name + (n ? '（記録済み' + (n > 1 ? ' ' + n + '回' : '') + '）' : '') })]);
     }
     if (due.length) { box.appendChild(el('div', { cls: 'sect', text: '今日が予定日の人' })); due.forEach(function (r) { box.appendChild(line(r)); }); }
     if (rest.length) { box.appendChild(el('div', { cls: 'sect', text: '予定外の人' })); rest.forEach(function (r) { box.appendChild(line(r)); }); }
@@ -849,13 +852,14 @@
     if (S.flash && Date.now() < S.flash.until) return;   // 押した直後の二度押しは受けない
     var dups = [];
     entries.forEach(function (e) {
-      v.records.forEach(function (r) {
-        if (r.type === '記録' && r.residentId === e.residentId && r.item === e.item) {
-          dups.push('・' + resName(e.residentId) + ' さん ' + (LABEL[e.item] || itemName(r)) + '（' + r.by + ' さんが記録済み）');
-        }
-      });
+      var prev = v.records.filter(function (r) { return r.type === '記録' && r.residentId === e.residentId && r.item === e.item; });
+      if (!prev.length) return;
+      var bys = [];
+      prev.forEach(function (r) { if (bys.indexOf(r.by) < 0) bys.push(r.by); });
+      dups.push('・' + resName(e.residentId) + ' さん ' + (LABEL[e.item] || itemName(prev[0])) + '：今日 ' + prev.length + '回 記録済み（' + bys.join('・') + ' さん）');
     });
-    if (dups.length && !(await ask('すでに記録があります。\n' + dups.join('\n') + '\n\nもう1回分として記録しますか？', '記録する', 'やめる'))) return;
+    // 1日2回の洗濯は正しい記録。「二重に付けた」と思って止めてしまわないよう、何回目になるかを見せて聞く。
+    if (dups.length && !(await ask('今日すでに記録があります。\n' + dups.join('\n') + '\n\nもう1回分（今日' + (dups.length === 1 ? ' ' + (Number(dups[0].replace(/^.*今日 (\d+)回.*$/, '$1')) + 1) + '回目' : 'の追加') + '）として記録しますか？\n同じことを二重に押しただけなら [やめる]。', '記録する', 'やめる'))) return;
     Q.push({ rid: newRequestId(), kind: 'add', me: v.me, date: v.date, force: dups.length > 0, state: 'wait', at: Date.now(),
              entries: entries.map(function (e) { var x = { residentId: e.residentId, item: e.item }; if (e.qty != null) x.qty = e.qty; return x; }) });
     saveQ();
