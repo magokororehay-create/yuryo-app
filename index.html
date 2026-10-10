@@ -174,10 +174,11 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbwvBftiwCAktOd9zOw6Q4jCNmm3OE_mkpbUphGCU_lM4T_SMEVFobCEX-dqeZ8Fk8oP/exec';
   var TOKEN_KEY = 'yuryo_token', DEVICE_KEY = 'yuryo_device', NAME_KEY = 'yuryo_name';
   var WD = ['日', '月', '火', '水', '木', '金', '土'];
-  var LABEL = { '洗濯': '洗濯', 'ソープ代': 'ソープ代', '乾燥機': '乾燥機', '排泄介助': '排泄介助', '掃除': '掃除',
-    '自費入浴': '入浴（自費）', '自費洗濯': '洗濯（自費）', '欠食_朝': '欠食 朝', '欠食_昼': '欠食 昼', '欠食_夕': '欠食 夕' };
-  var SIMPLE = ['洗濯', 'ソープ代', '排泄介助', '掃除', '自費入浴', '自費洗濯'];
-  var BULK = ['洗濯', 'ソープ代', '排泄介助', '掃除'];
+  var LABEL = { '洗濯＋洗剤': '洗濯＋洗剤', '洗濯機利用': '洗濯機利用', '洗濯': '洗濯（旧記録）', 'ソープ代': 'ソープ代', '乾燥機': '乾燥機', '排泄介助': '排泄介助（旧記録）', '掃除': '掃除（自費）',
+    '自費入浴': '入浴（自費）', '自費洗濯': '洗濯（自費・旧記録）', '欠食_朝': '欠食 朝', '欠食_昼': '欠食 昼', '欠食_夕': '欠食 夕' };
+  var SIMPLE = ['洗濯＋洗剤', '洗濯機利用', 'ソープ代', '掃除', '自費入浴'];
+  var BULK = SIMPLE.slice();
+  var LAUNDRY = ['洗濯', '洗濯＋洗剤', '洗濯機利用'];
   var S = { ticket: '', date: '', base: null, view: null, mode: 'res', sheetRid: '' };
 
   function $(id) { return document.getElementById(id); }
@@ -338,33 +339,30 @@
     check: { title: '「確認」の使い方（日勤リーダー）', body: [
       ['使う場面', '夕方、その日の記録に漏れがないかを確かめるとき。'],
       ['手順', '① 「予定があるのに記録なし」を上から見る\n② したのに付け忘れ → [記録する]\n③ しなかった → 理由を選んで [今日は無し]\n④ 最後に [確認完了]'],
-      ['わからないこと', '欠食・貸出・排泄介助・掃除には予定が無いので、漏れは機械では見つけられません。担当者に声をかけて確かめてください。'] ] },
+      ['わからないこと', '欠食・貸出・掃除（自費）・入浴（自費）には予定が無いので、漏れは機械では見つけられません。担当者に声をかけて確かめてください。'] ] },
     admin: { title: '「管理」の使い方', body: [
       ['中旬', 'おむつの袋数を入居者ごとに入れて [保存] → [発注書を作る]'],
       ['月のはじめ', '[集計する] で前の月の請求の表を作り、注意を見て直す'],
       ['集計が合ったら', '[締める] で前の月を確定する'],
       ['設定を変えるとき', '入居者・単価・スタッフ・調整は、スプレッドシートを直接直します。'] ] },
-    '洗濯': { title: '洗濯', body: [
+    '洗濯＋洗剤': { title: '洗濯＋洗剤（230円／回）', body: [
       ['押すとき', 'その人の洗濯物を洗濯機で洗ったとき。1回洗って1回押します。'],
-      ['種類', '「洗剤あり」「洗濯のみ」は入居者ごとに決まっているので、選ぶ必要はありません。'],
+      ['選び方', '施設の洗剤を使ったときに押します。ご自身の洗剤なら「洗濯機利用」（200円）を押します。同じ洗濯で両方は押しません。'],
       ['1日に2回洗ったとき', 'もう一度押します。「今日すでに記録があります」と出るので [記録する] を押してください。名前の横が 🧺洗濯✓2 になります。'],
       ['乾燥機', '乾燥機を使ったときは、下の「乾燥機」で別に分数を記録します。'] ] },
+    '洗濯機利用': { title: '洗濯機利用（200円／回）', body: [
+      ['押すとき', 'ご自身の洗剤で洗濯機を利用したとき。1回につき1回押します。施設の洗剤を使ったときは「洗濯＋洗剤」を押します。'],
+      ['予定の確認', 'どちらのボタンでも洗濯済みになります。同じ洗濯で両方は押しません。'],
+      ['乾燥機', '使った場合は別に分数を記録します。'] ] },
     'ソープ代': { title: 'ソープ代（入浴）', body: [
       ['押すとき', 'その人が入浴したとき。1回の入浴で1回押します。'],
       ['押さないとき', '清拭だけ・入浴しなかった日は押しません。予定日なのに入らなかった日は、リーダーが「確認」で「今日は無し」にします。'] ] },
-    '排泄介助': { title: '排泄介助', body: [
-      ['押すとき', '料金をいただく自費サービスとして排泄介助をしたとき。1回で1回押します。'],
-      ['迷ったら', '対象の人かどうか分からないときは、押す前にリーダーに確認してください。'] ] },
-    '掃除': { title: '掃除', body: [
+    '掃除': { title: '掃除（自費・500円／回）', body: [
       ['押すとき', '料金をいただく自費サービスとして居室の掃除をしたとき。1回で1回押します。'],
       ['迷ったら', '対象の人かどうか分からないときは、押す前にリーダーに確認してください。'] ] },
-    '自費入浴': { title: '入浴（自費）', body: [
+    '自費入浴': { title: '入浴（自費・1,000円／回）', body: [
       ['押すとき', 'いつもの入浴とは別に、料金をいただく自費サービスとして入浴介助をしたとき。'],
       ['ソープ代との違い', 'ふだんの入浴は「ソープ代」だけを押します。自費の入浴のときだけこちらを押します。'],
-      ['迷ったら', '押す前にリーダーに確認してください。'] ] },
-    '自費洗濯': { title: '洗濯（自費）', body: [
-      ['押すとき', 'いつもの洗濯とは別に、料金をいただく自費サービスとして洗濯をしたとき。'],
-      ['洗濯との違い', 'ふだんの洗濯は「洗濯」を押します。自費の洗濯のときだけこちらを押します。'],
       ['迷ったら', '押す前にリーダーに確認してください。'] ] },
     '乾燥機': { title: '乾燥機', body: [
       ['記録するとき', 'その人の洗濯物に乾燥機を使ったとき。'],
@@ -548,7 +546,7 @@
     [['洗濯', '🧺洗濯'], ['ソープ代', '🛁入浴']].forEach(function (p) {
       if (!r.due[p[0]]) return;
       var none = S.view.records.some(function (x) { return x.residentId === r.id && x.item === p[0] && x.type === 'なし'; });
-      var times = countOf(r.id, p[0]);   // 1日2回の洗濯は ✓2
+      var times = p[0] === '洗濯' ? recsOf(r.id).filter(function (x) { return LAUNDRY.indexOf(x.item) >= 0; }).reduce(function (n, x) { return n + x.qty; }, 0) : countOf(r.id, p[0]);
       out.push(el('span', { cls: 'tag ' + (times || none ? 'done' : 'due'), text: p[1] + (times ? '✓' + (times > 1 ? times : '') : none ? ' 無し' : '') }));
     });
     var n = recsOf(r.id).length;
@@ -577,7 +575,7 @@
     var dis = S.view.closed;
     var grid = el('div', { cls: 'grid' });
     SIMPLE.forEach(function (item) {
-      var label = LABEL[item] + (item === '洗濯' && r.laundryType ? '（' + r.laundryType + '）' : '');
+      var label = LABEL[item];
       var b = el('button', { text: label, 'data-k': rid + '|' + item, onclick: function () { send([{ residentId: rid, item: item }], b); } });
       b.disabled = dis;
       grid.appendChild(el('div', { cls: 'cell' }, [b, hb(item)]));
@@ -645,8 +643,9 @@
     var item = $('bulkItem').value;
     var box = $('bulkList'); clear(box);
     var list = S.view.residents.filter(function (r) { return !r.away; });
-    var due = list.filter(function (r) { return r.due[item]; });
-    var rest = list.filter(function (r) { return !r.due[item]; });
+    var planItem = LAUNDRY.indexOf(item) >= 0 ? '洗濯' : item;
+    var due = list.filter(function (r) { return r.due[planItem]; });
+    var rest = list.filter(function (r) { return !r.due[planItem]; });
     // 記録済みの人もチェックできる（1日2回の洗濯など）。送る前に send() が回数を見せて確かめる。
     function line(r) {
       var n = countOf(r.id, item);
@@ -699,6 +698,7 @@
           if (recs.some(function (r) { return r.id === id; })) return;
           recs.push({ id: id, residentId: e.residentId, item: e.item, qty: e.qty == null ? 1 : e.qty, by: b.me, type: '記録', mine: true, pending: true });
           pend[e.residentId + '|' + e.item] = true;
+          if (LAUNDRY.indexOf(e.item) >= 0) pend[e.residentId + '|洗濯'] = true;
         });
       } else {
         recs = recs.filter(function (r) { return r.id !== o.recordId; });
@@ -852,7 +852,7 @@
     if (S.flash && Date.now() < S.flash.until) return;   // 押した直後の二度押しは受けない
     var dups = [];
     entries.forEach(function (e) {
-      var prev = v.records.filter(function (r) { return r.type === '記録' && r.residentId === e.residentId && r.item === e.item; });
+      var prev = v.records.filter(function (r) { return r.type === '記録' && r.residentId === e.residentId && (LAUNDRY.indexOf(e.item) >= 0 ? LAUNDRY.indexOf(r.item) >= 0 : r.item === e.item); });
       if (!prev.length) return;
       var bys = [];
       prev.forEach(function (r) { if (bys.indexOf(r.by) < 0) bys.push(r.by); });
@@ -936,14 +936,17 @@
     if (!c.missing.length) box.appendChild(el('div', { cls: 'muted', text: '漏れはありません' }));
     c.missing.forEach(function (m) {
       var reason = selectOf(REASONS);
-      var rec = el('button', { text: '記録する', onclick: function () { send([{ residentId: m.residentId, item: m.item }], rec); } });
+      var choice = m.item === '洗濯' ? selectOf(['洗濯＋洗剤', '洗濯機利用']) : null;
+      var rec = el('button', { text: '記録する', onclick: function () { send([{ residentId: m.residentId, item: choice ? choice.value : m.item }], rec); } });
       var none = el('button', { cls: 'sub', text: '今日は無し', onclick: function () {
         act('none', { date: S.date, residentId: m.residentId, item: m.item, reason: reason.value }, '記録中…', '「今日は無し」にしました');
       } });
       rec.disabled = none.disabled = v.closed;
+      if (choice) choice.disabled = v.closed;
       box.appendChild(el('div', { cls: 'miss' }, [
         el('div', { cls: 'mhead', text: m.room + ' ' + m.name + '　' + (m.item === '洗濯' ? '🧺洗濯' : '🛁ソープ代') }),
-        el('div', { cls: 'row' }, [rec, reason, none]),
+        el('div', { cls: 'row' }, choice ? [choice, rec] : [rec]),
+        el('div', { cls: 'row' }, [reason, none]),
       ]));
     });
 
