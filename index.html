@@ -37,13 +37,15 @@
   .tag.done{background:var(--pri-weak);color:var(--pri);}
   .tag.away{background:#eee;color:#888;}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-  .grid button{background:var(--pri-weak);color:var(--pri);font-weight:600;padding:14px 8px;}
+  .grid button{background:#f5f6f6;color:#566a6b;border:1px solid #dce3e2;font-weight:600;padding:14px 8px;}
+  .grid button.normal-target{background:#e1efff;color:#175ba7;border:2px solid #76a8dc;}
   .grid.selfpay button{background:#f5f6f6;color:#566a6b;border:1px solid #dce3e2;}
   .grid.selfpay button.target{background:#fff0bd;color:#70500d;border:2px solid #ddb648;}
   .service-price{display:block;font-size:13px;font-weight:400;margin-top:5px;}
   .target-mark{display:block;font-size:11px;margin-top:5px;}
   .selfpay-tag{background:#fff0bd;color:#70500d;}
   .chk.target{background:#fff8dc;border-color:#ddb648;}
+  .chk.normal-target{background:#e1efff;border-color:#76a8dc;}
   .meals{display:flex;gap:8px;}
   .meals button{flex:1;background:#eef0f3;color:var(--ink);}
   .meals button.on{background:#c0392b;color:#fff;}
@@ -180,9 +182,9 @@
   var API_URL = 'https://script.google.com/macros/s/AKfycbwvBftiwCAktOd9zOw6Q4jCNmm3OE_mkpbUphGCU_lM4T_SMEVFobCEX-dqeZ8Fk8oP/exec';
   var TOKEN_KEY = 'yuryo_token', DEVICE_KEY = 'yuryo_device', NAME_KEY = 'yuryo_name';
   var WD = ['日', '月', '火', '水', '木', '金', '土'];
-  var LABEL = { '洗濯（自費）': '洗濯（自費）', '洗濯＋洗剤': '洗濯＋洗剤', '洗濯機利用': '洗濯機利用', '洗濯': '洗濯（旧記録）', 'ソープ代': 'ソープ代', '乾燥機': '乾燥機', '排泄介助': '排泄介助（旧記録）', '掃除': '掃除（自費）',
+  var LABEL = { '清拭': '清拭', '洗濯（自費）': '洗濯（自費）', '洗濯＋洗剤': '洗濯＋洗剤', '洗濯機利用': '洗濯機利用', '洗濯': '洗濯（旧記録）', 'ソープ代': 'ソープ代', '乾燥機': '乾燥機', '排泄介助': '排泄介助（旧記録）', '掃除': '掃除（自費）',
     '自費入浴': '入浴（自費）', '自費洗濯': '洗濯（自費・旧記録）', '欠食_朝': '欠食 朝', '欠食_昼': '欠食 昼', '欠食_夕': '欠食 夕' };
-  var NORMAL = ['洗濯＋洗剤', '洗濯機利用', 'ソープ代'];
+  var NORMAL = ['洗濯＋洗剤', '洗濯機利用', 'ソープ代', '清拭'];
   var SELF_PAY = ['洗濯（自費）', '掃除', '自費入浴'];
   var SIMPLE = NORMAL.concat(SELF_PAY);
   var BULK = SIMPLE.slice();
@@ -190,6 +192,7 @@
   var BATH = ['ソープ代', '自費入浴'];
   function sameService(a, b) { return LAUNDRY.indexOf(a) >= 0 ? LAUNDRY.indexOf(b) >= 0 : BATH.indexOf(a) >= 0 ? BATH.indexOf(b) >= 0 : a === b; }
   function isTarget(r, item) { return (r.selfPay || []).indexOf(item) >= 0; }
+  function isNormalTarget(r, item) { return item !== '清拭' && (r.normal || []).indexOf(item) >= 0; }
   var S = { ticket: '', date: '', base: null, view: null, mode: 'res', sheetRid: '' };
 
   function $(id) { return document.getElementById(id); }
@@ -372,6 +375,13 @@
     'selfpay': { title: '自費サービス', body: [
       ['対象の目印', '「自費対象者・開始日」表で確定した対象サービスは、開始日以降に黄色で表示します。'],
       ['記録の選び方', '自費で洗濯・入浴を記録するときは、同じ利用分の通常の洗濯料金・ソープ代を重ねて記録しません。'] ] },
+    'normal': { title: '通常の使用料・清拭', body: [
+      ['色の意味', '「通常使用料の対象」表で確定した利用項目を青で表示します。対象外・未設定は灰色です。灰色でも記録できます。'],
+      ['清拭', '清拭は無料の実施記録です。その日の体調で判断するため、いつも灰色です。清拭だけの場合はソープ代を記録しません。'] ] },
+    '清拭': { title: '清拭（無料）', body: [
+      ['押すとき', '入居者さんの身体を拭く清拭を実施したとき。実施記録は残しますが、料金は発生しません。'],
+      ['ソープ代', '清拭だけならソープ代は押しません。清拭は入浴の記録とは別です。予定していた入浴をしなかった場合は「確認」で今日は無しを記録してください。'],
+      ['ボタンの色', 'その日の体調により判断するため、常に灰色です。灰色でも押せます。'] ] },
     'ソープ代': { title: 'ソープ代（入浴）', body: [
       ['押すとき', 'その人が入浴したとき。1回の入浴で1回押します。'],
       ['押さないとき', '清拭だけ・入浴しなかった日は押しません。予定日なのに入らなかった日は、リーダーが「確認」で「今日は無し」にします。'] ] },
@@ -594,14 +604,15 @@
     if (r.away) sh.appendChild(el('div', { cls: 'banner', text: '入院・外泊中です' }));
     var dis = S.view.closed;
     [[NORMAL, '通常の使用料'], [SELF_PAY, '自費サービス']].forEach(function (group, i) {
-      sh.appendChild(sectH(group[1], i ? 'selfpay' : '洗濯＋洗剤'));
-      sh.appendChild(el('div', { cls: 'hint', text: i ? '黄色のボタンが、この方の自費対象サービスです。' : '洗濯機・施設の洗剤・入浴時のソープの使用料' }));
+      sh.appendChild(sectH(group[1], i ? 'selfpay' : 'normal'));
+      sh.appendChild(el('div', { cls: 'hint', text: i ? '黄色が自費対象です。灰色でも記録できます。' : '青が利用する項目の目印です。清拭は無料・常に灰色です。' }));
       var grid = el('div', { cls: 'grid' + (i ? ' selfpay' : '') });
       group[0].forEach(function (item) {
-        var b = el('button', { cls: isTarget(r, item) ? 'target' : '', 'data-k': rid + '|' + item, onclick: function () { send([{ residentId: rid, item: item }], b); } }, [el('span', { text: LABEL[item] })]);
+        var b = el('button', { cls: isTarget(r, item) && item !== '清拭' ? 'target' : isNormalTarget(r, item) ? 'normal-target' : '', 'data-k': rid + '|' + item, onclick: function () { send([{ residentId: rid, item: item }], b); } }, [el('span', { text: LABEL[item] })]);
         var price = S.view.servicePrices && S.view.servicePrices[item];
-        if (price != null) b.appendChild(el('span', { cls: 'service-price', text: Number(price).toLocaleString('ja-JP') + '円／回' }));
+        if (price != null) b.appendChild(el('span', { cls: 'service-price', text: item === '清拭' ? '無料' : Number(price).toLocaleString('ja-JP') + '円／回' }));
         if (isTarget(r, item)) b.appendChild(el('span', { cls: 'target-mark', text: '自費対象' }));
+        else if (isNormalTarget(r, item)) b.appendChild(el('span', { cls: 'target-mark', text: '利用対象' }));
         b.disabled = dis;
         grid.appendChild(el('div', { cls: 'cell' }, [b, hb(item)]));
       });
@@ -681,8 +692,8 @@
     function line(r) {
       var n = countOf(r.id, item);
       var cb = el('input', { type: 'checkbox', value: r.id });
-      return el('label', { cls: 'chk' + (n ? ' done' : '') + (isTarget(r, item) ? ' target' : '') },
-        [cb, el('span', { text: r.room + ' ' + r.name + (isTarget(r, item) ? '【自費対象】' : '') + (n ? '（記録済み' + (n > 1 ? ' ' + n + '回' : '') + '）' : '') })]);
+      return el('label', { cls: 'chk' + (n ? ' done' : '') + (isTarget(r, item) ? ' target' : isNormalTarget(r, item) ? ' normal-target' : '') },
+        [cb, el('span', { text: r.room + ' ' + r.name + (isTarget(r, item) ? '【自費対象】' : isNormalTarget(r, item) ? '【利用対象】' : '') + (n ? '（記録済み' + (n > 1 ? ' ' + n + '回' : '') + '）' : '') })]);
     }
     if (due.length) { box.appendChild(el('div', { cls: 'sect', text: '今日が予定日の人' })); due.forEach(function (r) { box.appendChild(line(r)); }); }
     if (rest.length) { box.appendChild(el('div', { cls: 'sect', text: '予定外の人' })); rest.forEach(function (r) { box.appendChild(line(r)); }); }
